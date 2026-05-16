@@ -1,65 +1,69 @@
-import sys
 import os
+import sys
+import streamlit as st
 
-# Esto le dice a Python que mire dentro de la carpeta donde está este archivo
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+print("==========================================")
+print("DIAGNÓSTICO DE RUTAS:")
+print("Tu terminal está ejecutando desde:", os.getcwd())
+print("El archivo app.py está físicamente en:", os.path.dirname(os.path.abspath(__file__)))
+print("Carpetas reales dentro de este proyecto:", os.listdir(os.path.dirname(os.path.abspath(__file__))))
+print("==========================================")
 
 import streamlit as st
-# ... aquí siguen tus otros imports (from auth.registration import ...)
-
+st.title("Probando rutas")
 # 1. IMPORTACIÓN DE TUS MÓDULOS (Las 6 carpetas)
-from auth.registration import formulario_registro
-from auth.login import mostrar_interfaz_login
-from perfiles.professional import perfil_profesional_view
-from perfiles.client import perfil_cliente_view
-from core.matching import mostrar_busqueda
-from core.appointments import gestionar_agenda
-from finance.payments import procesar_pago
-from database.db_handler import crear_tablas_iniciales
-from assets.stylecss import css__styles #importas la variable ue acabas de crear
+from autenticacion.registro import formulario_registro
+from autenticacion.ingresos import mostrar_interfaz_login
+from perfiles.profesional import perfil_profesional_view    
+from perfiles.cliente import perfil_cliente_view
+from nucleo.citas import mostrar_busqueda
+from nucleo.agendamiento import gestionar_agenda
+from finanzas.pagos import procesar_pago
+from basededatos.manejarbasededatos import crear_tablas_iniciales
+from estilo.estilocss import css__styles #importas la variable ue acabas de crear
+from config import Config
+
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) # inyectas el css en la app
 
 
-# 2. CONFIGURACIÓN INICIAL
-def local_css(file_name):
-    try:
-        with open(file_name) as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-    except FileNotFoundError:
-        pass # Si aún no creas el CSS, la app no se rompe
+# 3. CONFIGURACIÓN DE LA INTERFAZ (Tu menú de navegación)
+st.title("Red de Profesionales AXON")
+st.caption("Conectamos entrenadores, nutricionistas y fisioterapeutas con personas que buscan resultados reales.")
 
-# Inicializamos la base de datos al abrir la app
-crear_tablas_iniciales()
-local_css("assets/style.css")
-
-# 3. INTERFAZ DE NAVEGACIÓN
-st.sidebar.title(f"🚀 {Config.APP_NAME}")
-opcion = st.sidebar.selectbox("Menú Principal", 
-    ["Inicio", "Buscar Especialista", "Mi Perfil/Agenda", "Registro", "Pagos"]
+# Creamos un menú en la barra lateral para movernos por la app
+opcion_principal = st.sidebar.selectbox(
+    "¿Qué quieres hacer?",
+    ["Iniciar Sesión", "Registrarse"]
 )
 
-# 4. LÓGICA DE CONTROL (Aquí es donde llamas a cada carpeta)
-if opcion == "Inicio":
-    st.header("Bienvenido a la red de profesionales AXON")
-    st.write("Conectamos entrenadores, nutricionistas y fisios con personas que buscan resultados reales.")
-    st.image("https://via.placeholder.com/800x400?text=Publicidad+AXON") # O una de tu carpeta assets
+# 4. LÓGICA DE CONTROL: Mostramos una pantalla según lo que elija el usuario
+if opcion_principal == "Iniciar Sesión":
+    mostrar_interfaz_login()  # Llamamos a la función de tu archivo ingreso.py
+# caso 2: EL USUARIO SE VA A REGISTRAR 
+elif opcion_principal == "Registrarse":
+    st.subheader("unete a nuestra comunidad")
 
-elif opcion == "Buscar Especialista":
-    # Llama a la carpeta 'core'
-    mostrar_busqueda()
-
-elif opcion == "Registro":
-    # Llama a la carpeta 'auth'
+# aui aparece la segunda barra condicional
+tipo_usuario = st.selectbox(
+    "¿Qué tipo de usuario eres?",
+    ["Profesional", "Cliente"]
+)
+# dependiendo de lo ue elija la persona se mostrara un formulario diferente
+if tipo_usuario == "Profesional":
+    st.subheader("Ofrezco mis servicio")
     formulario_registro()
+    # Llamamos a la función de tu archivo registro.py (con tarifas, experiencia,etc)
+elif tipo_usuario == "Cliente":
+    st.subheader("Busco un servicio")
+    formulario_registro()
+    # Llamamos a la función de tu archivo registro.py (con tarifas, experiencia,etc)
+else:
+    st.error("Por favor, selecciona un tipo de usuario.")    # Llamamos a la función de tu archivo registro.py (sin tarifas, experiencia,etc)
 
-elif opcion == "Mi Perfil/Agenda":
-    # Aquí puedes decidir qué mostrar según el tipo de usuario
-    col1, col2 = st.columns(2)
-    with col1:
-        gestionar_agenda() # Carpeta core
-    with col2:
-        mostrar_interfaz_login() # Carpeta auth
 
-elif opcion == "Pagos":
-    # Llama a la carpeta 'finance'
-    procesar_pago(50000, "Profesional de Prueba")
+
+    
+
+
+
+    

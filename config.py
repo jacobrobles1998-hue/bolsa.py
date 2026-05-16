@@ -10,7 +10,7 @@ class Config:
     
     # Base de Datos
     # Por ahora usamos SQLite por ser sencilla para empezar
-    DB_PATH = 'database/bolsa_data.db'
+    DB_PATH = 'basededatos/bolsa_data.db'
     
     # Configuración de Negocio
     COMISION_APP = 0.10  # 10% de comisión por cada contrato

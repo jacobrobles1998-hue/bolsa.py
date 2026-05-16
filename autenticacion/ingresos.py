@@ -1,10 +1,12 @@
 import streamlit as st
 
 def mostrar_interfaz_login():
+    pass 
     st.subheader("Iniciar Sesión")
     
     email = st.text_input("Correo electrónico", key="login_email")
     password = st.text_input("Contraseña", type="password", key="login_pass")
+
     
     col1, col2 = st.columns(2)
     
@@ -20,3 +22,7 @@ def mostrar_interfaz_login():
     with col2:
         if st.button("Olvidé mi contraseña"):
             st.info("Función en desarrollo. Contacta al administrador de AXON.")
+
+def mostrar_interfaz_registro():
+    pass 
+    st.subheader("Registro de Usuario")
