@@ -4,6 +4,7 @@ def formulario_registro_profesional():
      
     with st.form("registro_form"):
         nombre = st.text_input("Nombre completo")
+        edad = st.number_input("Edad", min_value=0, step=1)
         tipo_profesional = st.selectbox(
             "¿Cuál es tu especialidad?",
             ["Entrenador Personal", "Nutricionista al deporte", "Fisioterapeuta"]
@@ -35,4 +36,31 @@ def formulario_registro_profesional():
 
 # Formulario de registro para clientes
 def formulario_registro_cliente():
-    st.subheader("Crea tu perfil cliente")
+    with st.form("registo_cliente_form"):
+          st.subheader("Crea tu perfil cliente")
+nombre = st.text_input("Nombre completo")
+edad = st.number_input("Edad", min_value=0, step=1)
+ciudad = st.selectbox(
+            "Ciudad de residencia", 
+            ["Barranquilla", "Soledad", "Puerto Colombia"] # Basado en tu zona de operación
+        )
+        
+
+# (crear basicos como nombre, ciudad, objetivo)...
+st.markdown("___")
+st.markdown("historias de salud y condicion fisica")
+st.caption("esta informacion es crucual para que el profesional diseñe un plan seguro")
+
+# Checkbox para saber si tiene alguna patología
+       
+
+
+
+       
+
+
+
+    
+
+    
+    
