@@ -1,6 +1,6 @@
 import streamlit as st
 
-def formulario_registro():
+def formulario_registro_profesional():
      
     with st.form("registro_form"):
         nombre = st.text_input("Nombre completo")
