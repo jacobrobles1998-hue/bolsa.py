@@ -1,6 +1,8 @@
 import os
 import sys
 import streamlit as st
+import streamlit.components.v1 as components
+
 
 print("==========================================")
 print("DIAGNÓSTICO DE RUTAS:")
@@ -10,7 +12,7 @@ print("Carpetas reales dentro de este proyecto:", os.listdir(os.path.dirname(os.
 print("==========================================")
 
 import streamlit as st
-st.title("Probando rutas")
+#st.title("Probando rutas")
 # 1. IMPORTACIÓN DE TUS MÓDULOS (Las 6 carpetas)
 from autenticacion.registro import formulario_registro_profesional
 from autenticacion.ingresos import mostrar_interfaz_login
@@ -23,9 +25,35 @@ from finanzas.pagos import procesar_pago
 from basededatos.manejarbasededatos import crear_tablas_iniciales
 from estilo.estilocss import css__styles #importas la variable ue acabas de crear
 from config import Config
-
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) # inyectas el css en la app
 
+def mostrar_login_neumorfico():
+    """
+      Busca los archivos visuales usando rutas relativas directas 
+    e inyecta el diseño neumórfico en la app.
+    """
+    # Cambiamos las rutas viejas por estas rutas directas simplificadas
+    html_path = "estilo/panel.html"
+    css_path = "estilo/neumorfico.css"
+    
+    try:
+        # Abrir y leer el archivo CSS de las sombras
+        with open(css_path, "r", encoding="utf-8") as f:
+            css_codigo = f.read()
+            
+        # Abrir y leer la estructura HTML de la tarjeta
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_codigo = f.read()
+            
+        # Fusionamos ambos códigos
+        diseno_final = f"<style>{css_codigo}</style>\n{html_codigo}"
+        
+        # Renderizamos usando la nueva importación 'components' que agregaste
+        components.html(diseno_final, height=850, scrolling=False)
+        
+    except FileNotFoundError as e:
+        # Si algo sale mal, este aviso en rojo te dirá exactamente qué nombre falló
+        st.error(f"⚠️ Alerta visual: No se pudo cargar la plantilla. Verifica que existan en la carpeta estilo. Detalles: {e}")
 # ==========================================
 # 1. INICIALIZAR EL ESTADO (¡ESTO ES LO QUE FALTA!)
 # ==========================================
@@ -33,16 +61,13 @@ st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) # inyectas 
 if "pantalla" not in st.session_state:
     st.session_state.pantalla = "login"
 
-# 3. CONFIGURACIÓN DE LA INTERFAZ (Tu menú de navegación)
-st.title("Red de Profesionales AXON")
-st.caption("Conectamos entrenadores, nutricionistas y fisioterapeutas con personas que buscan resultados reales.")
 
 # ==========================================
 # 3. LÓGICA DE CONTROL (Tu línea 37 ahora sí va a funcionar)
 # ==========================================
 if st.session_state.pantalla == "login":
-    # Llama a tu interfaz de ingresos.py
-    mostrar_interfaz_login()
+    # cambiado: ahora usamos el diseño neumórfico en el login
+    mostrar_login_neumorfico()
     
     # Botón abajo del login para cambiar a modo registro
     st.markdown("---")

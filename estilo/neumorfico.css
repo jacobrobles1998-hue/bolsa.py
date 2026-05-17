@@ -1,0 +1,178 @@
+/* Importar fuente */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+/* Reset básico y fondo principal */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Poppins', sans-serif;
+}
+
+body {
+    background-color: hwb(0 100% 0%); /* Fondo claro de la imagen */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+/* Cabecera */
+.header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    color: #111111; /* Color azul-verdoso oscuro */
+    font-weight: 600;
+}
+
+.header h2 {
+    font-size: 2rem;
+    color: #111111;
+    font-weight: 500;
+    margin-top: 5px;
+}
+
+/* Contenedor del Formulario */
+.login-container {
+    background-color: #e6ebf1;
+    width: 380px;
+    padding: 50px 40px 30px;
+    border-radius: 40px;
+    text-align: center;
+    
+    /* Neumorfismo Exterior (sombra clara arriba a la izq, oscura abajo a la der) */
+    box-shadow: -10px -10px 15px rgba(255, 255, 255, 0.9),
+                10px 10px 15px rgba(0, 0, 0, 0.05);
+}
+
+/* Representación del Logo */
+.logo-circle {
+    background-color: #0c0022; /* Fondo casi negro */
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    margin: 0 auto 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border: 3px solid #e6ebf1;
+    overflow: hidden;
+
+    /* Sombra para que flote un poco más que el contenedor */
+    box-shadow: inset -3px -3px 5px rgba(255, 255, 255, 0.05),
+                inset 3px 3px 5px rgba(0, 0, 0, 0.3),
+                0 5px 10px rgba(0,0,0,0.2);
+}
+
+.webdev-logo {
+    display: flex;
+    flex-direction: column;
+    color: white;
+    font-size: 8px;
+    position: relative;
+    line-height: 1;
+}
+
+.lt, .gt { font-size: 30px; font-weight: bold; }
+.lt { color: #fff; position: absolute; left: -18px; top: 0px;}
+.gt { color: #50e3c2; position: absolute; right: -18px; top: 0px;} /* Verde agua */
+.made { font-weight: bold; letter-spacing: 0.5px;}
+.easy { font-weight: 300;}
+
+/* Títulos Interiores */
+.login-container h3 {
+    color: #1a1a1a;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.subtitle {
+    color: #555;
+    font-size: 0.9rem;
+    font-weight: 300;
+    margin-bottom: 40px;
+}
+
+/* Grupos de Entrada */
+.input-group {
+    background-color: #e6ebf1;
+    width: 100%;
+    height: 60px;
+    border-radius: 30px;
+    margin-bottom: 25px;
+    display: flex;
+    align-items: center;
+    padding: 0 25px;
+    
+    /* Neumorfismo Interior (sombra oscura interior arriba a la izq, clara abajo a la der) */
+    box-shadow: inset 8px 8px 10px rgba(0, 0, 0, 0.04),
+                inset -8px -8px 10px rgba(255, 255, 255, 1);
+}
+
+.input-group i {
+    color: #999;
+    font-size: 1.2rem;
+    margin-right: 15px;
+}
+
+.input-group input {
+    border: none;
+    background: transparent;
+    outline: none;
+    color: #555;
+    font-size: 1rem;
+    width: 100%;
+}
+
+.input-group input::placeholder {
+    color: #999;
+    font-weight: 300;
+}
+
+/* Botón Login */
+button {
+    background-color: #5bc0de; /* Azul cian brillante */
+    color: white;
+    width: 100%;
+    height: 60px;
+    border-radius: 30px;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-top: 15px;
+    
+    /* Pequeña sombra de elevación */
+    box-shadow: 0 5px 15px rgba(91, 192, 222, 0.4);
+    transition: background 0.3s ease;
+}
+
+button:hover {
+    background-color: #46b8da;
+}
+
+/* Links Inferiores */
+.links {
+    margin-top: 25px;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.links a {
+    color: #333;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.links a:hover {
+    text-decoration: underline;
+}

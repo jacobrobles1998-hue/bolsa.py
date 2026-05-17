@@ -102,3 +102,4 @@ else:
         st.session_state.logeado = False
         st.session_state.rol = None
         st.rerun()
+                
