@@ -1,3 +1,4 @@
+from perfiles import profesional
 import os
 import sys
 import streamlit as st
@@ -25,6 +26,7 @@ from finanzas.pagos import procesar_pago
 from basededatos.manejarbasededatos import crear_tablas_iniciales
 from estilo.estilocss import css__styles #importas la variable ue acabas de crear
 from config import Config
+
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) # inyectas el css en la app
 
 def mostrar_login_neumorfico():
@@ -60,37 +62,205 @@ def mostrar_login_neumorfico():
 # Esto le enseña a Python qué es "pantalla" antes de usarla abajo
 if "pantalla" not in st.session_state:
     st.session_state.pantalla = "login"
+# 
+if "logeado" not in st.session_state:
+    st.session_state.logeado = False
 
+if "rol" not in st.session_state:
+    st.session_state.rol = None
 
 # ==========================================
 # 3. LÓGICA DE CONTROL (Tu línea 37 ahora sí va a funcionar)
 # ==========================================
-if st.session_state.pantalla == "login":
+# --- PANTALLA A: LOGIN ---
+if st.session_state.pantalla == "login" and not st.session_state.logeado:
+
     # cambiado: ahora usamos el diseño neumórfico en el login
     mostrar_login_neumorfico()
-    
-    # Botón abajo del login para cambiar a modo registro
-    st.markdown("---")
-    if st.button("¿No tienes cuenta aún? Regístrate aquí"):
-        st.session_state.pantalla = "registro"
-        st.rerun()
+    # Creamos columnas para centrar el botón nativo perfectamente abajo de la tarjeta
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<p style='text-align: center; color: #5bc0de; margin-bottom: 5px;'>¿No tienes una cuenta aún?</p>", unsafe_allow_html=True)
+        # Este botón es nativo, por lo que responderá al instante sin trabas de navegador
+        if st.button("Regístrate aquí", use_container_width=True):
+            st.session_state.pantalla = "registro"
+            st.rerun()
 
 # ==========================================
 # PANTALLA B: REGISTRO (Totalmente aislada)
 # ==========================================
 elif st.session_state.pantalla == "registro":
     st.subheader("Crea tu cuenta en nuestra comunidad")
-    
-    tipo_usuario = st.radio("¿Qué tipo de usuario eres?", ["Profesional", "Cliente"])
-    
-    st.markdown("---")
-    
-    if tipo_usuario == "Profesional":
+    st.caption("por favor selecciona tu tipo de perfil")
+
+    st.write("") # un espacio elegante de separación
+
+# aqui nacen las pestañas interactivas d lado a lado
+    tab_profesional, tab_Cliente = st.tabs(["Profesional AXON", "Cliente AXON"])
+
+    # ---CONTENIDO DE LA PESTAÑA PROFESIONAL
+    with tab_profesional:
+        st.write("") # un espacio elegante de separación
         formulario_registro_profesional()
-    else:
+    
+
+    # ---CONTENIDO DE LA PESTAÑA CLIENTE
+    with tab_Cliente:
+        st.write("") # un espacio elegante de separación
         formulario_registro_cliente()
-        
+
+    # BOTON ELEGANTE Y PLANO PARA REGRESAR AL LOGIN (FUUERA DEL BLOQUE DE PESTAÑAS)
     st.markdown("---")
-    if st.button("← Volver al Inicio de Sesión"):
+    if st.button("← Volver al Inicio de Sesión", use_container_width=True):
         st.session_state.pantalla = "login"
         st.rerun()
+
+        # ---PNATALLA C: VISTA PRINCIPAL (AQUI VA EL NUEVO CODIGO PARA VER DESPUES DE CARGAR EL LOGIN
+else:
+    st.title("Panel Principal - AXON")
+    
+    # Tarjeta de diagnóstico para ver los datos capturados en tiempo real
+    st.subheader(f"¡Bienvenido de vuelta, {st.session_state.get('nombre_usuario', 'Usuario')}!")
+    
+    st.info(f"🔑 *Rol de cuenta detectado:* {st.session_state.get('rol', 'No definido').upper()}")
+    
+    # Mensaje dinámico dependiendo de quién entra
+    if st.session_state.rol == "profesional":
+        st.success("💪 Vista de Entrenador/Nutricionista: Aquí se cargará tu Dashboard de ingresos, agenda y clientes.")
+    elif st.session_state.rol == "cliente":
+        st.success("👤 Vista de Cliente: Aquí verás tus historias de salud y los profesionales disponibles para contratar.")
+        st.title("🔍 Vitrina de Especialistas AXON")
+        st.subheader(f"¡hola, {st.session_state.nombre_usuario.title()}! explorar los profesionales disponibles para contratar.")
+        st.markdown("---")
+        
+        # selector de especialidad 
+        filtro_esp = st.selectbox(
+            "¿ que tipo de especialista esta buscando?", 
+            ["todos", "Entrenador personal", "Nutricionista al deporte ", "fisioterapeuta"],
+            key="esp_filtro"
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        #  base de datos de perfiles de profesionales
+        perfiles = [
+            {  
+                "nombre": "Javid Martinez",
+                "especialidad": "Entrenador personal",
+                "edad": 30,
+                "altura": "1.75 m",
+                "peso": "70.0 kg",
+                "genero": "Masculino",
+                "telefono": "3123456789",
+                "email": "javidmartinez@example.com",
+                "ciudad": "barranquilla",
+                "experiencia": "5 años",
+                "tarifa": 100000.0,
+                "certificacion": "certificado en biomecanica y entrenamiento de alta intensidad",
+                "calificacion": "⭐ 4.9 (38 opiniones)",
+            "cupos": "🚨 ¡Solo 3 cupos disponibles!",
+            "metodologia": "Enfoque estricto en ganancias de masa muscular mediante hipertrofia con tempos controlados (3s excéntrico).",
+            "emoji": "🏋️‍♂️"
+        },
+        {
+                "nombre": "arya stark",
+                "especialidad": "nutrisionista al deporte",
+                "edad": 30,
+                "altura": "1.60 m",
+                "peso": "55.0 kg",  
+                "genero": "femenino",
+                "telefono": "3123456789",
+                "email": "aryastark@example.com",
+                "ciudad": "barranquilla",
+                "experiencia": "5 años",
+                "tarifa": 100000.0,
+                "certificacion":"diploma posgrado, certificado en nutricion y alimentacion",
+                "calificacion": "⭐ 5.0 (52 opiniones)",
+            "cupos": "🚨 ¡Solo 3 cupos disponibles!",
+            "metodologia": "Enfoque estricto en la alimentacion y la nutricion para mejorar la salud y la performance",
+            "emoji": "🥑"
+        },
+        {
+                 "nombre": "Dante sparta",
+                 "especialidad": "fisioterapeuta",
+                 "edad": 30,
+                 "altura": "1.80 m",
+                 "peso": "80.0 kg",
+                 "genero": "Masculino",
+                 "telefono": "3123456789",
+                 "email": "dantespparta@example.com",
+                 "ciudad": "barranquilla",
+                 "experiencia": "5 años",
+                 "tarifa": 100000.0,
+                 "certificacion":"diploma posgrado, certificado en fisioterapia y rehabilitacion",
+                 "calificacion": "⭐ 5.0 (52 opiniones)",
+            "cupos": "🚨 ¡Solo 3 cupos disponibles!",
+            "metodologia": "Enfoque estricto en la fisioterapia para mejorar la salud y la performance",
+            "emoji": "🏋️‍♂️"
+        }
+    ]
+    # renderizado de la tarjetas dentro del bloque del cliente
+    for i, prof in enumerate(perfiles):  
+        if filtro_esp != "todos" and prof["especialidad"] != filtro_esp:
+            continue
+
+        with st.container(border=True):
+            col_foto_datos, col_detalles = st.columns([1, 2])
+            
+            with col_foto_datos:
+                st.markdown(f"## {prof['emoji']} {prof['nombre']}")
+                st.caption(f"📍 {prof['ciudad']}")
+                st.markdown(f"*{prof['calificacion']}*")
+                st.markdown("---")
+                st.markdown("*📊 Ficha Física:*")
+                st.markdown(f"* *Edad:* {prof['edad']} años")
+                st.markdown(f"* *Altura:* {prof['altura']}")
+                st.markdown(f"* *Peso:* {prof['peso']}")
+                st.markdown("---")
+                st.caption(prof["cupos"])
+            
+            with col_detalles:
+                st.markdown(f"### 💼 {prof['especialidad']}")
+                st.markdown(f"🏅 *Título:* {prof['certificacion']}")
+                st.markdown(f"⭐ *Experiencia:* {prof['experiencia']}")
+                st.markdown(f"💰 *Tarifa:* ${prof['tarifa']:.2f} COP / sesión")
+                st.markdown("---")
+                st.markdown("*🎯 Metodología y Enfoque:*")
+                st.write(prof["metodologia"])
+                st.markdown("---")
+                
+                if st.button(f"🤝 Solicitar Asesoría con {prof['nombre'].split()[0]}", key=f"btn_conectar_{i}", use_container_width=True):
+                    st.success(f"🚀 ¡Solicitud enviada! Nos comunicaremos con {prof['nombre']} para agendar tu cupo.")
+    # ⬆️ HASTA AQUÍ LLEGA EL CÓDIGO NUEVO ⬆️
+
+# 🚨 TU BOTÓN ACTUAL SE QUEDA ABAJO ASÍ DE INTACTO:
+st.markdown("---")  # (Esta era tu línea 132)
+if st.button("Cerrar Sesión", use_container_width=True):  # (Tu línea 134)
+    st.session_state.logeado = False
+    st.session_state.rol = None
+    st.session_state.pantalla = "login"
+    st.rerun()
+
+                            
+
+
+            
+
+        
+
+
+
+
+           
+            
+        
+        
+
+
+               
+    st.markdown("---")
+    # Botón obligatorio para poder resetear el estado y volver atrás de forma limpia
+    if st.button("Cerrar Sesión", use_container_width=True):
+        st.session_state.logeado = False
+        st.session_state.rol = None
+        st.session_state.pantalla = "login"
+        st.rerun()
+    

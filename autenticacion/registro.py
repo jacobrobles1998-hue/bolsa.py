@@ -1,105 +1,120 @@
 import streamlit as st
 
 def formulario_registro_profesional():
-    with st.form("registro_form"):
-        nombre = st.text_input("Nombre completo")
-        edad = st.number_input("Edad", min_value=0, step=1)
-        tipo_profesional = st.selectbox(
-            "¿Cuál es tu especialidad?",
-            ["Entrenador Personal", "Nutricionista al deporte", "Fisioterapeuta"]
-        )
-        ciudad = st.selectbox(
-            "Ciudad de residencia", 
-            ["Barranquilla", "Soledad", "Puerto Colombia"]
-        )
-        experiencia = st.number_input("Años de experiencia", min_value=0, step=1)
-        
-        modalidad_pago = st.selectbox(
-            "¿Cuál es tu modalidad de cobro?",
-            ["Por sesión", "Pago por mes"]  
-        )
-        tarifa = st.number_input("Tarifa base por sesión (COP)", min_value=0) 
-        
-        email = st.text_input("Correo electrónico")
-        password = st.text_input("Contraseña", type="password")
-        
-        enviar = st.form_submit_button("Registrarme en la Bolsa")
-        
-        if enviar:
-            if nombre and email and password:
-                # Modificamos el estado global al registrarse con éxito
-                st.session_state.logeado = True
-                st.session_state.rol = "profesional"
-                st.session_state.nombre_usuario = nombre
-                st.success(f"¡Bienvenido, {nombre}! Tu perfil como {tipo_profesional} ha sido creado.")
-                st.rerun()
-            else:
-                st.error("Por favor, llena todos los campos obligatorios.")
+    """
+    Formulario de registro para Entrenadores, Nutricionistas y Fisioterapeutas.
+    Optimizado sin botones de incremento (+/-) para mejorar la visualización.
+    """
+    st.markdown("### Datos del Profesional")
+    
+    # 1. Campos de texto y selección estilizados
+    nombre = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez", key="prof_nombre")
+    edad_input = st.number_input("Edad", value=25, key="prof_edad")
+    
+    especialidad = st.selectbox(
+        "¿Cuál es tu especialidad?",
+        ["Entrenador Personal", "Nutricionista Deportivo", "Fisioterapeuta"],
+        key="prof_especialidad"
+    )
+    
+    ciudad = st.text_input("Ciudad de residencia", placeholder="Ej: Bogotá, Colombia", key="prof_ciudad")
+     # EXPERIENCIA (¡AQUI CAMBIAMOS LA MAGIA, PERMITIMOS DECIMALES COMO 1.5 O 2.5)
+    experiencia_input = st.number_input("Años de experiencia", value=5, key="prof_experiencia")
+    
+    modalidad = st.selectbox(
+        "¿Cuál es tu modalidad de cobro?",
+        ["Pago por sesión", "Pago por mes"],
+        key="prof_modalidad"
+    )
+    
+    tarifa_input = st.number_input("Tarifa base por sesión (COP)", min_value=0.0, max_value=1000000.0, step=5000.0 , value=150000.0, format="%.2f", key="prof_tarifa")
+    
+    # Credenciales
+    st.markdown("---")
+   
+    correo = st.text_input("Correo electrónico", placeholder="ejemplo@axon.com", key="prof_correo")
+    contrasena = st.text_input("Contraseña", type="password", placeholder="Crea una contraseña segura", key="prof_pass")
+    
+    
+   # ... (Aquí arriba tienes tus inputs: tarifa_input, correo, contrasena)
 
-# --- FORMULARIO DE REGISTRO PARA CLIENTES (CORREGIDO) ---
+    st.write("") # Espacio en blanco visual
+
+    # 🏢 EL BOTÓN COMPLETAMENTE LIBRE AL FINAL DEL FORMULARIO
+    if st.button("Registrarme en la Bolsa", use_container_width=True, key="btn_prof_registro"):
+        # 1. Validamos que los campos de texto no estén vacíos
+        if not nombre.strip() or not correo.strip():
+            st.error("⚠️ Por favor, llena los campos de Nombre y Correo Electrónico.")
+        
+        # 2. Validamos que los números tengan sentido lógico
+        elif edad_input < 15 or experiencia_input < 0 or tarifa_input <= 0:
+            st.error("⚠️ Por favor, ingresa una edad, experiencia o tarifa válidas.")
+            
+        else:
+            # 🌟 SE GIRA LA LLAVE EN LA MEMORIA GLOBAL
+            st.session_state.logeado = True
+            st.session_state.rol = "profesional"
+            st.session_state.nombre_usuario = nombre
+            st.session_state.pantalla = "dashboard"
+            
+            st.success(f"¡Excelente, {nombre}! Tu perfil de profesional ha sido registrado con éxito.")
+            st.rerun()
+
 def formulario_registro_cliente():
-    # Todo lo que está dentro de la función lleva 4 espacios de sangría
-    with st.form("registo_cliente_form"):
-        # Todo lo que va DENTRO del formulario lleva 8 espacios de sangría
-        st.subheader("Crea tu perfil cliente")
+    """
+    Formulario de registro para Clientes con historial de salud obligatorio y dinámico.
+    Optimizado sin presupuesto y adaptado para entrenadores profesionales.
+    """
+    st.markdown("## Datos del Cliente")
+    # st.subheader("Crea tu perfil cliente")
+    
+    # 1. Información Básica
+    nombre_cliente = st.text_input("Nombre completo", placeholder="Ej: Carlos Gómez", key="cli_nombre")
+    edad_input = st.number_input("Edad", value=25, key="cli_edad")
+    
+    ciudad = st.selectbox(
+        "Ciudad de residencia", 
+        ["Barranquilla", "Soledad", "Puerto Colombia"],
+        key="cli_ciudad"
+    )
         
-        nombre = st.text_input("Nombre completo", key="cliente_nombre")
-        edad = st.number_input("Edad", min_value=0, step=1, key="cliente_edad")
-        ciudad = st.selectbox(
-            "Ciudad de residencia", 
-            ["Barranquilla", "Soledad", "Puerto Colombia"],
-            key="cliente_ciudad"
+    st.markdown("---")
+    st.markdown("### Historial de Salud y Condición Física")
+    st.caption("Esta información es crucial para que el profesional diseñe un plan seguro y eficiente.")
+        
+    # 2. Bloque de Patologías Inteligente
+    tiene_patologia = st.checkbox("¿Sufres de alguna patología, enfermedad o lesión diagnosticada?", key="cli_patologia")
+    
+    detalles_salud = ""
+    if tiene_patologia:
+        # Si marca la casilla, aparece este cuadro de texto grande de forma obligatoria
+        detalles_salud = st.text_area(
+            "⚠️ DETALLE OBLIGATORIO: Describe brevemente tu condición (Ej: Hernia discal L4-L5, Hipertensión, Esguince de rodilla):", 
+            placeholder="Escribe aquí los detalles médicos para tu entrenador...",
+            key="cli_detalles"
         )
-        
-        # Agregamos los campos de salud que tenías sueltos DENTRO del formulario
-        st.markdown("---")
-        st.markdown("### Historias de salud y condición física")
-        st.caption("Esta información es crucial para que el profesional diseñe un plan seguro.")
-        
-        # Checkbox de patologías (puedes agregar más campos aquí)
-        tiene_patologia = st.checkbox("¿Sufres de alguna patología o lesión diagnosticada?")
-        detalles_salud = st.text_area("Si marcaste la casilla, detalla brevemente tu condición:")
-        
-        email = st.text_input("Correo electrónico", key="cliente_email")
-        password = st.text_input("Contraseña", type="password", key="cliente_password")
-        
-        # ⚠️ EL BOTÓN DE GUARDADO CORREGIDO: Debe estar indentado aquí adentro
-        enviar_cliente = st.form_submit_button("Registrarme como Cliente")
-        
-        if enviar_cliente:
-            if nombre and email and password:
-                # Modificamos el estado global al registrarse con éxito
-                st.session_state.logeado = True
-                st.session_state.rol = "cliente"
-                st.session_state.nombre_usuario = nombre
-                st.success(f"¡Bienvenido, {nombre}! Tus datos han sido guardados.")
-                st.rerun()
-            else:
-                st.error("Por favor, llena todos los campos obligatorios.")
-
-
-# --- CONTROL DE FLUJO PRINCIPAL (Al final del archivo, pegado al margen izquierdo) ---
-
-if "logeado" not in st.session_state:
-    st.session_state.logeado = False
-if "rol" not in st.session_state:
-    st.session_state.rol = None
-
-if not st.session_state.logeado:
-    # Selector inicial limpio para alternar entre ambos formularios sin que se mezclen
-    tipo_registro = st.radio("¿Cómo deseas registrarte?", ["Como Profesional", "Como Cliente"])
     
-    if tipo_registro == "Como Profesional":
-        formulario_registro_profesional()
-    else:
-        formulario_registro_cliente()
-else:
-    # Vista una vez logeado
-    st.title(f"Panel Principal - AXON")
-    st.write(f"Hola *{st.session_state.get('nombre_usuario', '')}, has ingresado como *{st.session_state.rol}**.")
-    
-    if st.button("Cerrar Sesión"):
-        st.session_state.logeado = False
-        st.session_state.rol = None
-        st.rerun()
-                
+    st.markdown("---")
+    st.markdown("### Credenciales de Cuenta")
+    email = st.text_input("Correo electrónico", placeholder="Ej: carlos.gomez@example.com", key="cli_email")
+    password = st.text_input("Contraseña", type="password", key="cli_password")
+        
+   # ... (Aquí arriba tienes tus inputs de cliente: nombre_cliente, correo_cliente, etc.)
+
+    st.write("") # Espacio en blanco visual
+
+    # 👥 EL BOTÓN COMPLETAMENTE LIBRE AL FINAL DEL FORMULARIO CLIENTE
+    if st.button("Registrarme en la Bolsa", use_container_width=True, key="btn_cliente_registro"):
+        # 1. Validamos que los campos de texto no estén vacíos
+        if not nombre_cliente.strip() or not email.strip():
+            st.error("⚠️ Por favor, llena los campos de Nombre y Correo Electrónico.")
+            
+        else:
+            # 🌟 SE GIRA LA LLAVE EN LA MEMORIA GLOBAL
+            st.session_state.logeado = True
+            st.session_state.rol = "cliente"
+            st.session_state.nombre_usuario = nombre_cliente
+            st.session_state.pantalla = "dashboard"
+            
+            st.success(f"¡Excelente, {nombre_cliente}! Tu perfil de Cliente ha sido registrado con éxito.")
+            st.rerun()
