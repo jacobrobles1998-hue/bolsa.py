@@ -26,6 +26,7 @@ from finanzas.pagos import procesar_pago
 from basededatos.manejarbasededatos import crear_tablas_iniciales
 from estilo.estilocss import css__styles #importas la variable ue acabas de crear
 from config import Config
+from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
 
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) # inyectas el css en la app
 
@@ -90,24 +91,15 @@ if st.session_state.pantalla == "login" and not st.session_state.logeado:
 # PANTALLA B: REGISTRO (Totalmente aislada)
 # ==========================================
 elif st.session_state.pantalla == "registro":
-    st.subheader("Crea tu cuenta en nuestra comunidad")
-    st.caption("por favor selecciona tu tipo de perfil")
-
-    st.write("") # un espacio elegante de separación
-
-# aqui nacen las pestañas interactivas d lado a lado
-    tab_profesional, tab_Cliente = st.tabs(["Profesional AXON", "Cliente AXON"])
-
-    # ---CONTENIDO DE LA PESTAÑA PROFESIONAL
-    with tab_profesional:
-        st.write("") # un espacio elegante de separación
-        formulario_registro_profesional()
     
-
+    
+# aqui nacen las pestañas interactivas d lado a lado
+    st.write("") # un espacio elegante de separación
+    formulario_registro_profesional()
+    
     # ---CONTENIDO DE LA PESTAÑA CLIENTE
-    with tab_Cliente:
-        st.write("") # un espacio elegante de separación
-        formulario_registro_cliente()
+    st.write("") # un espacio elegante de separación
+    formulario_registro_cliente()
 
     # BOTON ELEGANTE Y PLANO PARA REGRESAR AL LOGIN (FUUERA DEL BLOQUE DE PESTAÑAS)
     st.markdown("---")
@@ -198,32 +190,44 @@ else:
         }
     ]
     # renderizado de la tarjetas dentro del bloque del cliente
-    for i, prof in enumerate(perfiles):  
-        if filtro_esp != "todos" and prof["especialidad"] != filtro_esp:
+    # 🔄 201. Ciclo FOR para recorrer los entrenadores
+    for i, prof in enumerate(perfiles):
+        # 202. Corregido: "Todos" con la T mayúscula para que coincida con tu selectbox
+        if filtro_esp != "Todos" and prof["especialidad"] != filtro_esp:
             continue
-
+            
+        # 205. El contenedor principal
         with st.container(border=True):
+            # 206. Corregido: st.columns en inglés y con un Tab de sangría hacia la derecha
             col_foto_datos, col_detalles = st.columns([1, 2])
             
+            # 208. Bloque izquierdo (va alineado con la línea de arriba)
             with col_foto_datos:
                 st.markdown(f"## {prof['emoji']} {prof['nombre']}")
                 st.caption(f"📍 {prof['ciudad']}")
-                st.markdown(f"*{prof['calificacion']}*")
+                st.markdown(f"**{prof['calificacion']}**")
                 st.markdown("---")
-                st.markdown("*📊 Ficha Física:*")
-                st.markdown(f"* *Edad:* {prof['edad']} años")
-                st.markdown(f"* *Altura:* {prof['altura']}")
-                st.markdown(f"* *Peso:* {prof['peso']}")
+                st.markdown("**📊 Ficha Física:**")
+                st.markdown(f"* **Edad:** {prof['edad']} años")
+                st.markdown(f"* **Altura:** {prof['altura']}")
+                st.markdown(f"* **Peso:** {prof['peso']}")
                 st.markdown("---")
                 st.caption(prof["cupos"])
             
+            # 220. Bloque derecho (va alineado a la misma altura de col_foto_datos)
             with col_detalles:
                 st.markdown(f"### 💼 {prof['especialidad']}")
-                st.markdown(f"🏅 *Título:* {prof['certificacion']}")
-                st.markdown(f"⭐ *Experiencia:* {prof['experiencia']}")
-                st.markdown(f"💰 *Tarifa:* ${prof['tarifa']:.2f} COP / sesión")
+                st.markdown(f"🏅 **Título:** *{prof['certificacion']}*")
+                st.markdown(f"⭐ **Experiencia:** {prof['experiencia']}")
+                st.markdown(f"💰 **Tarifa:** ${prof['tarifa']:.2f} COP / sesión")
                 st.markdown("---")
-                st.markdown("*🎯 Metodología y Enfoque:*")
+                st.markdown("**🎯 Metodología y Enfoque:**")
+                st.write(prof["metodologia"])
+                st.markdown("---")
+                
+                # Botón de contacto
+                if st.button(f"🤝 Solicitar Asesoría con {prof['nombre'].split()[0]}", key=f"btn_conectar_{i}", use_container_width=True):
+                    st.success(f"🚀 ¡Solicitud enviada! Nos comunicaremos con {prof['nombre']} para agendar tu cupo.")
                 st.write(prof["metodologia"])
                 st.markdown("---")
                 
@@ -256,11 +260,5 @@ if st.button("Cerrar Sesión", use_container_width=True):  # (Tu línea 134)
 
 
                
-    st.markdown("---")
-    # Botón obligatorio para poder resetear el estado y volver atrás de forma limpia
-    if st.button("Cerrar Sesión", use_container_width=True):
-        st.session_state.logeado = False
-        st.session_state.rol = None
-        st.session_state.pantalla = "login"
-        st.rerun()
+    
     

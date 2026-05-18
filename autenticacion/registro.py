@@ -1,71 +1,103 @@
 import streamlit as st
+from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
+
+
 
 def formulario_registro_profesional():
-    """
-    Formulario de registro para Entrenadores, Nutricionistas y Fisioterapeutas.
-    Optimizado sin botones de incremento (+/-) para mejorar la visualización.
-    """
-    st.markdown("### Datos del Profesional")
-    
-    # 1. Campos de texto y selección estilizados
-    nombre = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez", key="prof_nombre")
-    edad_input = st.number_input("Edad", value=25, key="prof_edad")
-    
-    especialidad = st.selectbox(
-        "¿Cuál es tu especialidad?",
-        ["Entrenador Personal", "Nutricionista Deportivo", "Fisioterapeuta"],
-        key="prof_especialidad"
-    )
-    
-    ciudad = st.text_input("Ciudad de residencia", placeholder="Ej: Bogotá, Colombia", key="prof_ciudad")
-     # EXPERIENCIA (¡AQUI CAMBIAMOS LA MAGIA, PERMITIMOS DECIMALES COMO 1.5 O 2.5)
-    experiencia_input = st.number_input("Años de experiencia", value=5, key="prof_experiencia")
-    
-    modalidad = st.selectbox(
-        "¿Cuál es tu modalidad de cobro?",
-        ["Pago por sesión", "Pago por mes"],
-        key="prof_modalidad"
-    )
-    
-    tarifa_input = st.number_input("Tarifa base por sesión (COP)", min_value=0.0, max_value=1000000.0, step=5000.0 , value=150000.0, format="%.2f", key="prof_tarifa")
-    
-    # Credenciales
-    st.markdown("---")
    
-    correo = st.text_input("Correo electrónico", placeholder="ejemplo@axon.com", key="prof_correo")
-    contrasena = st.text_input("Contraseña", type="password", placeholder="Crea una contraseña segura", key="prof_pass")
-    
-    
-   # ... (Aquí arriba tienes tus inputs: tarifa_input, correo, contrasena)
+    st.markdown("crea tu cuenta para ingresar a la plataforma.")
+    # aqui conservamos las pestañas actuales intactas
+    tab_profesional, tab_cliente = st.tabs(["Profesional", "Cliente"])
 
-    st.write("") # Espacio en blanco visual
+    # ---1. pestaña del profesional---
+    with tab_profesional:
+        st.markdown("registro de nuevo profesional")
+        st.caption("completa para perfil para poder ofrecer tus servivios en axon")
 
-    # 🏢 EL BOTÓN COMPLETAMENTE LIBRE AL FINAL DEL FORMULARIO
-    if st.button("Registrarme en la Bolsa", use_container_width=True, key="btn_prof_registro"):
-        # 1. Validamos que los campos de texto no estén vacíos
-        if not nombre.strip() or not correo.strip():
-            st.error("⚠️ Por favor, llena los campos de Nombre y Correo Electrónico.")
+        # inyectamos el formulario si tocar las pestañas
+        with st.form("form_registro_largo_profesional"):
+            
+            # ---seccion A: DATOS DE CUENTA Y CONTACTOS---
+            st.markdown(" Datos de cuenta y contacto")
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                nombre_completo = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez")
+                correo_electronico = st.text_input("Correo electrónico", placeholder="Ej: javid.martinez@example.com")
+        # ---selector de departamentos (jala las llaves del diccionario: atlantico, antiquia...)
+                depto_sel = st.selectbox(
+                "Departamento de residencia",
+                list(DEPARTAMENTOS_COLOMBIA.keys())
+        )
+         # --- selector de ciudades (magicamente solo muestra las ciudades del departamento seleccionado)
+                ciudad_sel = st.selectbox(
+                "Ciudad/municipio",
+                DEPARTAMENTOS_COLOMBIA[depto_sel]
+            )
+
+            with col_c2:
+                telefono = st.text_input("Teléfono", placeholder="Ej: 31012345678")
+                contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres")
+                confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña"    )
+                genero = st.selectbox(
+                    "Género",
+                    ["Masculino", "Femenino", "otro"]
+                )
+                st.markdown("---")
+            
+            # --- SECCIÓN B: FICHA FÍSICA ---
+            st.markdown("Ficha Física del Especialista")
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                edad = st.number_input("Edad (Años)", min_value=18, max_value=90, value=24, step=1)
+            with col_f2:
+                altura = st.number_input("Altura (Metros)", min_value=1.20, max_value=2.30, value=1.75, step=0.01, format="%.2f")
+            with col_f3:
+                peso = st.number_input("Peso Actual (Kg)", min_value=40.0, max_value=150.0, value=74.0, step=0.1, format="%.1f")
+                
+            st.markdown("---")
+            
+            # --- SECCIÓN C: PERFIL PROFESIONAL ---
+            st.markdown(" Información Profesional y Tarifas")
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                especialidad = st.selectbox(
+                    "Tu Especialidad Principal", 
+                    ["Entrenador Personal", "Nutricionista Deportivo", "Fisioterapeuta"]
+                )
+                certificacion = st.text_input("Título o Certificación Destacada", placeholder="Ej: Certificado en Biomecánica")
+            with col_p2:
+                experiencia = st.number_input("Años de Experiencia", min_value=0, max_value=50, value=5, step=1)
+                tarifa = st.number_input("Tarifa por Sesión (COP)", min_value=10000.0, value=60000.0, step=5000.0, format="%.2f")
+                
+            st.markdown("<br>", unsafe_allow_html=True)
+            metodologia = st.text_area(
+                "Describe tu Metodología y Enfoque (Esto lo verán tus clientes)", 
+                placeholder="Ej: Enfoque estricto en ganancias de masa muscular mediante hipertrofia con tempos controlados (3s excéntrico)..."
+            )
+            
+            # Botón de envío exclusivo para el formulario del profesional
+            boton_enviar_prof = st.form_submit_button("🚀 Crear Perfil Profesional", use_container_width=True)
+            
+            if boton_enviar_prof:
+                if not nombre_completo.strip() or not correo_electronico.strip() or not contrasena.strip():
+                    st.error("⚠️ Por favor, llena los campos obligatorios.")
+                else:
+                    st.success(f"💪 ¡Perfil de {nombre_completo} creado con éxito!")
+
+    # --- 2. PESTAÑA DEL CLIENTE (SE QUEDA COMO LA TIENES ACABADA) ---
+    with tab_cliente:
+        st.markdown("## 👤 Registro de Nuevo Cliente")
+        st.caption("Regístrate como cliente para buscar y contratar a los mejores profesionales.")
         
-        # 2. Validamos que los números tengan sentido lógico
-        elif edad_input < 15 or experiencia_input < 0 or tarifa_input <= 0:
-            st.error("⚠️ Por favor, ingresa una edad, experiencia o tarifa válidas.")
-            
-        else:
-            # 🌟 SE GIRA LA LLAVE EN LA MEMORIA GLOBAL
-            st.session_state.logeado = True
-            st.session_state.rol = "profesional"
-            st.session_state.nombre_usuario = nombre
-            st.session_state.pantalla = "dashboard"
-            
-            st.success(f"¡Excelente, {nombre}! Tu perfil de profesional ha sido registrado con éxito.")
-            st.rerun()
-
+        # Aquí adentro dejas el código corto que ya tienes hecho para el cliente
+        # (Nombre, Correo, Contraseña, Botón de registrar cliente, etc.)
+                
 def formulario_registro_cliente():
     """
     Formulario de registro para Clientes con historial de salud obligatorio y dinámico.
     Optimizado sin presupuesto y adaptado para entrenadores profesionales.
     """
-    st.markdown("## Datos del Cliente")
+    st.markdown("Datos del Cliente")
     # st.subheader("Crea tu perfil cliente")
     
     # 1. Información Básica
