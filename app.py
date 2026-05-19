@@ -1,264 +1,367 @@
-from perfiles import profesional
-import os
-import sys
 import streamlit as st
 import streamlit.components.v1 as components
 
+# 1. Configuración de la página (Siempre de primero)
+st.set_page_config(
+    page_title="AXON - Optimización Humana",
+    page_icon="🚀",
+    layout="wide"
+)
 
-print("==========================================")
-print("DIAGNÓSTICO DE RUTAS:")
-print("Tu terminal está ejecutando desde:", os.getcwd())
-print("El archivo app.py está físicamente en:", os.path.dirname(os.path.abspath(__file__)))
-print("Carpetas reales dentro de este proyecto:", os.listdir(os.path.dirname(os.path.abspath(__file__))))
-print("==========================================")
+# 2. Inyectar la tipografía Poppins en toda la app de forma global
+st.html(
+    """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        
+        html, body, [class*="st-"], p, h1, h2, h3, h4, h5, h6, span, button, input, select, textarea {
+            font-family: 'Poppins', sans-serif !important;
+        }
+    </style>
+    """,
+)
 
-import streamlit as st
-#st.title("Probando rutas")
-# 1. IMPORTACIÓN DE TUS MÓDULOS (Las 6 carpetas)
-from autenticacion.registro import formulario_registro_profesional
+# 3. IMPORTACIÓN DE TUS MÓDULOS
+from autenticacion.registro import formulario_registro_profesional_ui
 from autenticacion.ingresos import mostrar_interfaz_login
-from autenticacion.registro import formulario_registro_cliente
+from autenticacion.registro import formulario_registro_cliente_ui
 from perfiles.profesional import perfil_profesional_view    
 from perfiles.cliente import perfil_cliente_view
 from nucleo.citas import mostrar_busqueda
 from nucleo.agendamiento import gestionar_agenda
 from finanzas.pagos import procesar_pago
-from basededatos.manejarbasededatos import crear_tablas_iniciales
-from estilo.estilocss import css__styles #importas la variable ue acabas de crear
-from config import Config
+from basededatos.manejarbasededatos import crear_contrato, crear_sesion, crear_tablas_iniciales, eliminar_cliente, eliminar_profesional, eliminar_sesion, guardar_foto_cliente, guardar_foto_profesional, listar_clientes_de_profesional, obtener_cliente_por_id, obtener_profesional_por_id, obtener_sesion
+from estilo.estilocss import css__styles 
+from interfaz_base import barra_navegacion_glass
 from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
 
-st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) # inyectas el css en la app
+# Inyectar estilos CSS generales
+st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) 
+
+def _qp_all() -> dict:
+    try:
+        raw = dict(st.query_params)
+    except Exception:
+        raw = st.experimental_get_query_params()
+    out = {}
+    for k, v in raw.items():
+        if isinstance(v, list):
+            if v:
+                out[k] = v[0]
+        elif v is not None:
+            out[k] = str(v)
+    return out
+
+def _qp_get(key: str):
+    return _qp_all().get(key)
+
+def _qp_set(updates: dict):
+    params = _qp_all()
+    for k, v in updates.items():
+        if v is None:
+            params.pop(k, None)
+        else:
+            params[k] = str(v)
+    try:
+        for k in list(st.query_params.keys()):
+            del st.query_params[k]
+        for k, v in params.items():
+            st.query_params[k] = v
+    except Exception:
+        st.experimental_set_query_params(**params)
+
+if "db_inicializada" not in st.session_state:
+    try:
+        crear_tablas_iniciales()
+        st.session_state.db_inicializada = True
+    except Exception as e:
+        st.session_state.db_inicializada = False
+        st.error(f"No se pudo inicializar la base de datos: {e}")
 
 def mostrar_login_neumorfico():
     """
-      Busca los archivos visuales usando rutas relativas directas 
+    Busca los archivos visuales usando rutas relativas directas 
     e inyecta el diseño neumórfico en la app.
     """
-    # Cambiamos las rutas viejas por estas rutas directas simplificadas
     html_path = "estilo/panel.html"
     css_path = "estilo/neumorfico.css"
-    
     try:
-        # Abrir y leer el archivo CSS de las sombras
         with open(css_path, "r", encoding="utf-8") as f:
             css_codigo = f.read()
-            
-        # Abrir y leer la estructura HTML de la tarjeta
         with open(html_path, "r", encoding="utf-8") as f:
             html_codigo = f.read()
-            
-        # Fusionamos ambos códigos
         diseno_final = f"<style>{css_codigo}</style>\n{html_codigo}"
-        
-        # Renderizamos usando la nueva importación 'components' que agregaste
         components.html(diseno_final, height=850, scrolling=False)
-        
     except FileNotFoundError as e:
-        # Si algo sale mal, este aviso en rojo te dirá exactamente qué nombre falló
-        st.error(f"⚠️ Alerta visual: No se pudo cargar la plantilla. Verifica que existan en la carpeta estilo. Detalles: {e}")
+        st.error(f"Alerta visual: No se pudo cargar la plantilla: {e}")
+
+
 # ==========================================
-# 1. INICIALIZAR EL ESTADO (¡ESTO ES LO QUE FALTA!)
+# 4. INICIALIZAR EL ESTADO (Estructura Limpia)
 # ==========================================
-# Esto le enseña a Python qué es "pantalla" antes de usarla abajo
 if "pantalla" not in st.session_state:
-    st.session_state.pantalla = "login"
-# 
+    st.session_state.pantalla = "login"  # Arrenca estrictamente en el Login
+
 if "logeado" not in st.session_state:
     st.session_state.logeado = False
 
 if "rol" not in st.session_state:
     st.session_state.rol = None
 
-# ==========================================
-# 3. LÓGICA DE CONTROL (Tu línea 37 ahora sí va a funcionar)
-# ==========================================
-# --- PANTALLA A: LOGIN ---
-if st.session_state.pantalla == "login" and not st.session_state.logeado:
+if "submenu_actual" not in st.session_state:
+    st.session_state.submenu_actual = "Inicio"
 
-    # cambiado: ahora usamos el diseño neumórfico en el login
-    mostrar_login_neumorfico()
-    # Creamos columnas para centrar el botón nativo perfectamente abajo de la tarjeta
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("<p style='text-align: center; color: #5bc0de; margin-bottom: 5px;'>¿No tienes una cuenta aún?</p>", unsafe_allow_html=True)
-        # Este botón es nativo, por lo que responderá al instante sin trabas de navegador
-        if st.button("Regístrate aquí", use_container_width=True):
-            st.session_state.pantalla = "registro"
-            st.rerun()
+if "selected_profesional_id" not in st.session_state:
+    st.session_state.selected_profesional_id = None
+
+tab_q = _qp_get("tab")
+if tab_q in {"Inicio", "Progreso", "Configuracion"}:
+    st.session_state.submenu_actual = tab_q
+
+prof_q = _qp_get("prof")
+if prof_q and str(prof_q).isdigit():
+    st.session_state.selected_profesional_id = int(prof_q)
+
+if not st.session_state.logeado:
+    token_q = _qp_get("s")
+    if token_q:
+        ses = obtener_sesion(str(token_q))
+        if ses:
+            st.session_state.logeado = True
+            st.session_state.pantalla = "login"
+            st.session_state.rol = ses["rol"]
+            st.session_state.usuario_id = ses["user_id"]
+            if ses["rol"] == "cliente":
+                user = obtener_cliente_por_id(ses["user_id"])
+            else:
+                user = obtener_profesional_por_id(ses["user_id"])
+            if user:
+                st.session_state.nombre_usuario = user.get("nombre")
+                st.session_state.email_usuario = user.get("email")
+        else:
+            _qp_set({"s": None})
+
 
 # ==========================================
-# PANTALLA B: REGISTRO (Totalmente aislada)
+# 5. LÓGICA DE CONTROL (Aislamiento Radical)
 # ==========================================
-elif st.session_state.pantalla == "registro":
-    
-    
-# aqui nacen las pestañas interactivas d lado a lado
-    st.write("") # un espacio elegante de separación
-    formulario_registro_profesional()
-    
-    # ---CONTENIDO DE LA PESTAÑA CLIENTE
-    st.write("") # un espacio elegante de separación
-    formulario_registro_cliente()
 
-    # BOTON ELEGANTE Y PLANO PARA REGRESAR AL LOGIN (FUUERA DEL BLOQUE DE PESTAÑAS)
-    st.markdown("---")
-    if st.button("← Volver al Inicio de Sesión", use_container_width=True):
+# 🚀 MUNDO 1: EL USUARIO YA ENTRÓ (Dashboard & Barra Flotante Premium)
+if st.session_state.logeado: 
+    if "usuario_id" not in st.session_state or st.session_state.get("rol") not in {"cliente", "profesional"}:
+        st.session_state.logeado = False
         st.session_state.pantalla = "login"
+        st.session_state.rol = None
         st.rerun()
 
-        # ---PNATALLA C: VISTA PRINCIPAL (AQUI VA EL NUEVO CODIGO PARA VER DESPUES DE CARGAR EL LOGIN
+    # 1. Ejecuta tu barra de navegación glass desde interfaz_base
+    barra_navegacion_glass() 
+    
+    # 2. Captura la pestaña activa
+    vista = st.session_state.submenu_actual
+    
+    # 3. Renderizado de Contenedores Limpios
+    if vista == "Inicio":
+        rol = st.session_state.get("rol")
+        usuario_id = st.session_state.get("usuario_id")
+
+        if rol == "cliente":
+            mostrar_busqueda()
+
+            profesional_id = st.session_state.get("selected_profesional_id")
+            if profesional_id:
+                profesional = obtener_profesional_por_id(profesional_id)
+                if profesional:
+                    perfil_profesional_view(profesional)
+                    tarifa = profesional.get("tarifa")
+                    monto = float(tarifa) if tarifa is not None else None
+                    if st.button("Contratar a este profesional", use_container_width=True):
+                        crear_contrato(
+                            id_cliente=int(usuario_id),
+                            id_profesional=int(profesional_id),
+                            monto=monto,
+                        )
+                        st.session_state.selected_profesional_id = None
+                        _qp_set({"prof": None})
+                        st.success("Contrato creado. Ya eres cliente de este profesional.")
+                        st.rerun()
+
+            cliente = obtener_cliente_por_id(usuario_id)
+            if cliente:
+                with st.expander("Mi perfil", expanded=False):
+                    perfil_cliente_view(cliente)
+
+        elif rol == "profesional":
+            profesional = obtener_profesional_por_id(usuario_id)
+            if profesional:
+                perfil_profesional_view(profesional)
+            clientes = listar_clientes_de_profesional(int(usuario_id))
+            if not clientes:
+                st.info("Todavía no tienes clientes activos.")
+            else:
+                for c in clientes:
+                    with st.container():
+                        st.markdown(f"#### {c.get('nombre', 'Cliente')}")
+                        email = c.get("email")
+                        if email:
+                            st.write(f"{email}")
+                        telefono = c.get("telefono")
+                        if telefono:
+                            st.write(f"{telefono}")
+                        depto = c.get("departamento")
+                        if depto:
+                            st.write(f"{depto}")
+                        patologia = c.get("patologia_familiar")
+                        if patologia:
+                            st.write(f"Patología familiar: {patologia}")
+                        metodologia = c.get("metodologia")
+                        if metodologia:
+                            st.write(metodologia)
+                        monto = c.get("monto")
+                        if monto is not None:
+                            st.write(f"Monto: ${float(monto):,.0f}")
+                        fecha = c.get("fecha")
+                        if fecha:
+                            st.write(f"Desde: {fecha}")
+                        st.markdown("---")
+        
+    elif vista == "Progreso":
+        st.markdown("Historial de Rendimiento Avanzado")
+        
+    elif vista == "Configuracion":
+        st.subheader("Ajustes")
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            if st.button("Cerrar sesión", use_container_width=True):
+                token_q = _qp_get("s")
+                if token_q:
+                    eliminar_sesion(str(token_q))
+                _qp_set({"s": None})
+                st.session_state.logeado = False
+                st.session_state.pantalla = "login"
+                st.session_state.rol = None
+                st.session_state.usuario_id = None
+                st.session_state.nombre_usuario = None
+                st.session_state.email_usuario = None
+                st.session_state.selected_profesional_id = None
+                st.rerun()
+
+        with col_b:
+            if "confirmar_eliminar" not in st.session_state:
+                st.session_state.confirmar_eliminar = False
+
+            if not st.session_state.confirmar_eliminar:
+                if st.button("Eliminar mi cuenta", use_container_width=True):
+                    st.session_state.confirmar_eliminar = True
+                    st.rerun()
+            else:
+                st.warning("Esto borrará tu perfil y tus contratos. Esta acción no se puede deshacer.")
+                col_c1, col_c2 = st.columns(2)
+                with col_c1:
+                    if st.button("Cancelar", use_container_width=True):
+                        st.session_state.confirmar_eliminar = False
+                        st.rerun()
+                with col_c2:
+                    if st.button("Sí, borrar", use_container_width=True):
+                        token_q = _qp_get("s")
+                        if token_q:
+                            eliminar_sesion(str(token_q))
+                        _qp_set({"s": None})
+                        rol = st.session_state.get("rol")
+                        uid = st.session_state.get("usuario_id")
+                        if rol == "profesional":
+                            eliminar_profesional(int(uid))
+                        else:
+                            eliminar_cliente(int(uid))
+                        st.session_state.confirmar_eliminar = False
+                        st.session_state.logeado = False
+                        st.session_state.pantalla = "login"
+                        st.session_state.rol = None
+                        st.session_state.usuario_id = None
+                        st.session_state.nombre_usuario = None
+                        st.session_state.email_usuario = None
+                        st.session_state.selected_profesional_id = None
+                        st.success("Cuenta eliminada.")
+                        st.rerun()
+
+
+# 🔒 MUNDO 2: EL USUARIO ESTÁ AFUERA (Login o Registros - Totalmente Ocultos del Dashboard)
 else:
-    st.title("Panel Principal - AXON")
-    
-    # Tarjeta de diagnóstico para ver los datos capturados en tiempo real
-    st.subheader(f"¡Bienvenido de vuelta, {st.session_state.get('nombre_usuario', 'Usuario')}!")
-    
-    st.info(f"🔑 *Rol de cuenta detectado:* {st.session_state.get('rol', 'No definido').upper()}")
-    
-    # Mensaje dinámico dependiendo de quién entra
-    if st.session_state.rol == "profesional":
-        st.success("💪 Vista de Entrenador/Nutricionista: Aquí se cargará tu Dashboard de ingresos, agenda y clientes.")
-    elif st.session_state.rol == "cliente":
-        st.success("👤 Vista de Cliente: Aquí verás tus historias de salud y los profesionales disponibles para contratar.")
-        st.title("🔍 Vitrina de Especialistas AXON")
-        st.subheader(f"¡hola, {st.session_state.nombre_usuario.title()}! explorar los profesionales disponibles para contratar.")
+    # --- PANTALLA EXCLUSIVA: LOGIN NEUMÓRFICO ---
+    if st.session_state.pantalla == "login":
+        mostrar_interfaz_login()
+
+    # --- PANTALLA DE SELECCIÓN DE REGISTRO ---
+    elif st.session_state.pantalla == "registro":
+        st.subheader("¿Cómo quieres unirte a AXON?")
+        
+        # Radio button para que el usuario elija su camino
+        tipo = st.radio("Selecciona tu perfil:", ["Profesional", "Cliente"], horizontal=True)
+        
         st.markdown("---")
         
-        # selector de especialidad 
-        filtro_esp = st.selectbox(
-            "¿ que tipo de especialista esta buscando?", 
-            ["todos", "Entrenador personal", "Nutricionista al deporte ", "fisioterapeuta"],
-            key="esp_filtro"
-        )
-        st.markdown("<br>", unsafe_allow_html=True)
-        #  base de datos de perfiles de profesionales
-        perfiles = [
-            {  
-                "nombre": "Javid Martinez",
-                "especialidad": "Entrenador personal",
-                "edad": 30,
-                "altura": "1.75 m",
-                "peso": "70.0 kg",
-                "genero": "Masculino",
-                "telefono": "3123456789",
-                "email": "javidmartinez@example.com",
-                "ciudad": "barranquilla",
-                "experiencia": "5 años",
-                "tarifa": 100000.0,
-                "certificacion": "certificado en biomecanica y entrenamiento de alta intensidad",
-                "calificacion": "⭐ 4.9 (38 opiniones)",
-            "cupos": "🚨 ¡Solo 3 cupos disponibles!",
-            "metodologia": "Enfoque estricto en ganancias de masa muscular mediante hipertrofia con tempos controlados (3s excéntrico).",
-            "emoji": "🏋️‍♂️"
-        },
-        {
-                "nombre": "arya stark",
-                "especialidad": "nutrisionista al deporte",
-                "edad": 30,
-                "altura": "1.60 m",
-                "peso": "55.0 kg",  
-                "genero": "femenino",
-                "telefono": "3123456789",
-                "email": "aryastark@example.com",
-                "ciudad": "barranquilla",
-                "experiencia": "5 años",
-                "tarifa": 100000.0,
-                "certificacion":"diploma posgrado, certificado en nutricion y alimentacion",
-                "calificacion": "⭐ 5.0 (52 opiniones)",
-            "cupos": "🚨 ¡Solo 3 cupos disponibles!",
-            "metodologia": "Enfoque estricto en la alimentacion y la nutricion para mejorar la salud y la performance",
-            "emoji": "🥑"
-        },
-        {
-                 "nombre": "Dante sparta",
-                 "especialidad": "fisioterapeuta",
-                 "edad": 30,
-                 "altura": "1.80 m",
-                 "peso": "80.0 kg",
-                 "genero": "Masculino",
-                 "telefono": "3123456789",
-                 "email": "dantespparta@example.com",
-                 "ciudad": "barranquilla",
-                 "experiencia": "5 años",
-                 "tarifa": 100000.0,
-                 "certificacion":"diploma posgrado, certificado en fisioterapia y rehabilitacion",
-                 "calificacion": "⭐ 5.0 (52 opiniones)",
-            "cupos": "🚨 ¡Solo 3 cupos disponibles!",
-            "metodologia": "Enfoque estricto en la fisioterapia para mejorar la salud y la performance",
-            "emoji": "🏋️‍♂️"
-        }
-    ]
-    # renderizado de la tarjetas dentro del bloque del cliente
-    # 🔄 201. Ciclo FOR para recorrer los entrenadores
-    for i, prof in enumerate(perfiles):
-        # 202. Corregido: "Todos" con la T mayúscula para que coincida con tu selectbox
-        if filtro_esp != "Todos" and prof["especialidad"] != filtro_esp:
-            continue
+        # Según lo que elija, llamamos a la función correcta
+        if tipo == "Profesional":
+            formulario_registro_profesional_ui()
+        else:
+            formulario_registro_cliente_ui() # Aquí llamas al que te salía en la foto c60f88a3
             
-        # 205. El contenedor principal
-        with st.container(border=True):
-            # 206. Corregido: st.columns en inglés y con un Tab de sangría hacia la derecha
-            col_foto_datos, col_detalles = st.columns([1, 2])
             
-            # 208. Bloque izquierdo (va alineado con la línea de arriba)
-            with col_foto_datos:
-                st.markdown(f"## {prof['emoji']} {prof['nombre']}")
-                st.caption(f"📍 {prof['ciudad']}")
-                st.markdown(f"**{prof['calificacion']}**")
-                st.markdown("---")
-                st.markdown("**📊 Ficha Física:**")
-                st.markdown(f"* **Edad:** {prof['edad']} años")
-                st.markdown(f"* **Altura:** {prof['altura']}")
-                st.markdown(f"* **Peso:** {prof['peso']}")
-                st.markdown("---")
-                st.caption(prof["cupos"])
-            
-            # 220. Bloque derecho (va alineado a la misma altura de col_foto_datos)
-            with col_detalles:
-                st.markdown(f"### 💼 {prof['especialidad']}")
-                st.markdown(f"🏅 **Título:** *{prof['certificacion']}*")
-                st.markdown(f"⭐ **Experiencia:** {prof['experiencia']}")
-                st.markdown(f"💰 **Tarifa:** ${prof['tarifa']:.2f} COP / sesión")
-                st.markdown("---")
-                st.markdown("**🎯 Metodología y Enfoque:**")
-                st.write(prof["metodologia"])
-                st.markdown("---")
-                
-                # Botón de contacto
-                if st.button(f"🤝 Solicitar Asesoría con {prof['nombre'].split()[0]}", key=f"btn_conectar_{i}", use_container_width=True):
-                    st.success(f"🚀 ¡Solicitud enviada! Nos comunicaremos con {prof['nombre']} para agendar tu cupo.")
-                st.write(prof["metodologia"])
-                st.markdown("---")
-                
-                if st.button(f"🤝 Solicitar Asesoría con {prof['nombre'].split()[0]}", key=f"btn_conectar_{i}", use_container_width=True):
-                    st.success(f"🚀 ¡Solicitud enviada! Nos comunicaremos con {prof['nombre']} para agendar tu cupo.")
-    # ⬆️ HASTA AQUÍ LLEGA EL CÓDIGO NUEVO ⬆️
+        # Botón para volver al login si se arrepintió
+        if st.button("← Volver al Inicio de Sesión"):
+            st.session_state.pantalla = "login"
+            st.rerun()
 
-# 🚨 TU BOTÓN ACTUAL SE QUEDA ABAJO ASÍ DE INTACTO:
-st.markdown("---")  # (Esta era tu línea 132)
-if st.button("Cerrar Sesión", use_container_width=True):  # (Tu línea 134)
-    st.session_state.logeado = False
-    st.session_state.rol = None
-    st.session_state.pantalla = "login"
-    st.rerun()
+    elif st.session_state.pantalla == "foto_perfil":
+        rol = st.session_state.get("rol")
+        usuario_id = st.session_state.get("usuario_id")
+        nombre = st.session_state.get("nombre_usuario") or "Usuario"
 
-                            
+        if rol not in {"cliente", "profesional"} or usuario_id is None:
+            st.session_state.pantalla = "login"
+            st.rerun()
 
+        st.title("Foto de Perfil")
+        st.write(f"Hola, {nombre}. Puedes tomarte o subir una foto. También puedes omitirlo por ahora.")
 
-            
+        tab1, tab2 = st.tabs(["Tomar foto", "Subir foto"])
 
+        foto_file = None
+        with tab1:
+            foto_file = st.camera_input("Tomar foto", key="foto_perfil_camera")
+        with tab2:
+            up = st.file_uploader(
+                "Subir foto",
+                type=["png", "jpg", "jpeg", "webp"],
+                key="foto_perfil_upload",
+            )
+            if up is not None:
+                foto_file = up
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Omitir por ahora", use_container_width=True):
+                token = crear_sesion(str(rol), int(usuario_id))
+                _qp_set({"s": token, "tab": _qp_get("tab") or "Inicio"})
+                st.session_state.logeado = True
+                st.session_state.pantalla = "login"
+                st.rerun()
+        with col_b:
+            disabled = foto_file is None
+            if st.button("Guardar y Continuar", use_container_width=True, disabled=disabled):
+                foto_bytes = foto_file.getvalue() if foto_file is not None else None
+                foto_mime = getattr(foto_file, "type", None)
+                if foto_bytes:
+                    if rol == "profesional":
+                        guardar_foto_profesional(int(usuario_id), foto_bytes, foto_mime)
+                    else:
+                        guardar_foto_cliente(int(usuario_id), foto_bytes, foto_mime)
+                token = crear_sesion(str(rol), int(usuario_id))
+                _qp_set({"s": token, "tab": _qp_get("tab") or "Inicio"})
+                st.session_state.logeado = True
+                st.session_state.pantalla = "login"
+                st.rerun()
         
 
-
-
-
-           
-            
-        
-        
-
-
-               
-    
     

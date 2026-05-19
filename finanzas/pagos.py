@@ -1,5 +1,5 @@
 import streamlit as st
-from config import Config
+
 
 def procesar_pago(monto, profesional_nombre):
     st.subheader("💰 Pasarela de Pago Segura")
