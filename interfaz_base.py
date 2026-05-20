@@ -1,6 +1,7 @@
 # interfaz_base.py
 # interfaz_base.py
 import streamlit as st
+import base64
 
 def barra_navegacion_glass():
     """
@@ -108,12 +109,32 @@ def barra_navegacion_glass():
             margin-top: 2px;
             border: 1px solid rgba(255,255,255,0.5);
         }
+
+        div[data-testid="stTextInput"]:has(input[aria-label="BUSCADOR_NAV"]) {
+            margin-top: 2px;
+        }
+
+        input[aria-label="BUSCADOR_NAV"] {
+            background: #E2E8F0 !important;
+            border-radius: 16px !important;
+            height: 40px !important;
+            padding: 8px 14px !important;
+            box-shadow: inset 2px 2px 5px #CBD5E1, inset -2px -2px 5px #FFFFFF !important;
+            border: 1px solid rgba(255,255,255,0.5) !important;
+            color: #334155 !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+        }
+
+        input[aria-label="BUSCADOR_NAV"]::placeholder {
+            color: #94A3B8 !important;
+            font-weight: 500 !important;
+        }
         
         /* Foto circular flotante de perfil */
         .avatar-premium {
-            width: 42px;
-            height: 42px;
-            border-radius: 50% !important;
+            width: 56px;
+            height: 56px;
             border: 2px solid #FFFFFF !important;
             box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
             object-fit: cover;
@@ -121,12 +142,32 @@ def barra_navegacion_glass():
             margin: 0 auto;
         }
         </style>
+        </style>
         """,
         unsafe_allow_html=True
     )
 
     if "submenu_actual" not in st.session_state:
         st.session_state.submenu_actual = "Inicio"
+
+    def _avatar_src() -> str:
+        foto = st.session_state.get("foto_usuario")
+        foto_mime = st.session_state.get("foto_usuario_mime") or "image/jpeg"
+        if foto:
+            try:
+                encoded = base64.b64encode(foto).decode("ascii")
+                return f"data:{foto_mime};base64,{encoded}"
+            except Exception:
+                pass
+        svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+            "<rect width='100' height='100' rx='50' fill='#E2E8F0'/>"
+            "<circle cx='50' cy='40' r='18' fill='#94A3B8'/>"
+            "<path d='M20 92c6-20 24-30 30-30s24 10 30 30' fill='#94A3B8'/>"
+            "</svg>"
+        )
+        encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
 
     def _qp_all() -> dict:
         try:
@@ -158,10 +199,21 @@ def barra_navegacion_glass():
             st.experimental_set_query_params(**params)
 
     # Maquetación estructural de las columnas
+    q_qp = _qp_all().get("q") or ""
+    if "nav_search" not in st.session_state:
+        st.session_state.nav_search = q_qp
+
+    def _on_search_change():
+        q = (st.session_state.get("nav_search") or "").strip()
+        st.session_state.submenu_actual = "Inicio"
+        if "selected_profesional_id" in st.session_state:
+            st.session_state.selected_profesional_id = None
+        _qp_set({"tab": "Inicio", "q": q if q else None, "prof": None})
+
     with st.container():
         st.markdown('<div class="premium-nav-container">', unsafe_allow_html=True)
         
-        col_dots, col_1, col_2, col_3, col_search, col_avatar = st.columns([0.5, 1.1, 1.1, 1.1, 2.2, 0.6])
+        col_dots, col_1, col_2, col_3, col_search, col_avatar = st.columns([0.5, 1.1, 1.1, 1.1, 2.2, 0.75])
 
         # Puntos decorativos estilo Mac de la esquina izquierda
         with col_dots:
@@ -208,23 +260,21 @@ def barra_navegacion_glass():
 
         # Buscador Neumórfico Integrado
         with col_search:
-            st.markdown(
-                """
-                <div class="search-container-premium">
-                    <span style="margin-right: 8px;">🔍</span>
-                    <span style="color: #94A3B8; font-family: sans-serif; font-weight: 500;">Buscar atletas o rutinas...</span>
-                </div>
-                """, 
-                unsafe_allow_html=True
+            st.text_input(
+                "BUSCADOR_NAV",
+                key="nav_search",
+                placeholder="Buscar atletas o rutinas...",
+                label_visibility="collapsed",
+                on_change=_on_search_change,
             )
 
         # Avatar o foto del usuario logeado
         with col_avatar:
+            avatar_src = _avatar_src()
             st.markdown(
-                """
-                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80" 
-                     class="avatar-premium" alt="User">
-                """, 
+                f"""
+                <img src="{avatar_src}" class="avatar-premium" alt="User">
+                """,
                 unsafe_allow_html=True
             )
             

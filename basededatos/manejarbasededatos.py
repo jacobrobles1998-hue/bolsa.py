@@ -67,10 +67,12 @@ def crear_tablas_iniciales():
             altura REAL,
             peso REAL,
             especialidad TEXT,
+            universidad TEXT,
             certificacion TEXT,
             experiencia INTEGER,
             tarifa REAL,
             metodologia TEXT,
+            estado_verificacion TEXT,
             created_at TEXT NOT NULL
         )
     ''')
@@ -121,6 +123,20 @@ def crear_tablas_iniciales():
         """
     )
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS certificaciones_profesional (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_profesional INTEGER NOT NULL,
+            titulo TEXT,
+            archivo BLOB,
+            archivo_mime TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(id_profesional) REFERENCES profesionales(id) ON DELETE CASCADE
+        )
+        """
+    )
+
     _ensure_columns(
         cursor,
         "profesionales",
@@ -138,10 +154,12 @@ def crear_tablas_iniciales():
             ("altura", "REAL"),
             ("peso", "REAL"),
             ("especialidad", "TEXT"),
+            ("universidad", "TEXT"),
             ("certificacion", "TEXT"),
             ("experiencia", "INTEGER"),
             ("tarifa", "REAL"),
             ("metodologia", "TEXT"),
+            ("estado_verificacion", "TEXT"),
             ("created_at", "TEXT"),
         ],
     )
@@ -177,15 +195,52 @@ def crear_tablas_iniciales():
             ("estado", "TEXT NOT NULL DEFAULT 'activo'"),
         ],
     )
+    _ensure_columns(
+        cursor,
+        "certificaciones_profesional",
+        [
+            ("id_profesional", "INTEGER"),
+            ("titulo", "TEXT"),
+            ("archivo", "BLOB"),
+            ("archivo_mime", "TEXT"),
+            ("created_at", "TEXT"),
+        ],
+    )
 
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_profesionales_especialidad ON profesionales(especialidad)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_profesionales_departamento ON profesionales(departamento)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contratos_profesional ON contratos(id_profesional)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_contratos_cliente ON contratos(id_cliente)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_certificaciones_profesional_prof ON certificaciones_profesional(id_profesional)')
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_profesionales_email ON profesionales(email) WHERE email IS NOT NULL")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_email ON clientes(email) WHERE email IS NOT NULL")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_expires ON sesiones(expires_at)")
     
+    conn.commit()
+    conn.close()
+
+    try:
+        anonimizar_correos_existentes()
+    except Exception:
+        pass
+
+def anonimizar_correos_existentes():
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE profesionales
+        SET email = 'prof_' || id || '@axon.local'
+        WHERE email IS NOT NULL AND email NOT LIKE 'prof_%@axon.local'
+        """
+    )
+    cursor.execute(
+        """
+        UPDATE clientes
+        SET email = 'cli_' || id || '@axon.local'
+        WHERE email IS NOT NULL AND email NOT LIKE 'cli_%@axon.local'
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -196,12 +251,12 @@ def crear_profesional(datos: dict) -> int:
     cursor.execute(
         """
         INSERT INTO profesionales
-        (nombre, email, telefono, password_hash, foto, foto_mime, departamento, ciudad, genero, edad, altura, peso, especialidad, certificacion, experiencia, tarifa, metodologia, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (nombre, email, telefono, password_hash, foto, foto_mime, departamento, ciudad, genero, edad, altura, peso, especialidad, universidad, certificacion, experiencia, tarifa, metodologia, estado_verificacion, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datos.get("nombre"),
-            (datos.get("email") or "").strip().lower(),
+            f"prof_{secrets.token_hex(8)}@axon.local",
             datos.get("telefono"),
             hash_password(datos.get("password") or ""),
             None,
@@ -213,10 +268,12 @@ def crear_profesional(datos: dict) -> int:
             datos.get("altura"),
             datos.get("peso"),
             datos.get("especialidad"),
+            datos.get("universidad"),
             datos.get("certificacion"),
             datos.get("experiencia"),
             datos.get("tarifa"),
             datos.get("metodologia"),
+            datos.get("estado_verificacion") or "pendiente",
             now,
         ),
     )
@@ -237,7 +294,7 @@ def crear_cliente(datos: dict) -> int:
         """,
         (
             datos.get("nombre"),
-            (datos.get("email") or "").strip().lower(),
+            f"cli_{secrets.token_hex(8)}@axon.local",
             datos.get("telefono"),
             hash_password(datos.get("password") or ""),
             None,
@@ -258,23 +315,32 @@ def crear_cliente(datos: dict) -> int:
     conn.close()
     return cliente_id
 
-def autenticar_usuario(email: str, password: str):
-    email = (email or "").strip().lower()
-    if not email or not password:
+def autenticar_usuario(telefono: str, password: str):
+    telefono = (telefono or "").strip()
+    if not telefono or not password:
         return None
     conn = conectar_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM profesionales WHERE email = ?", (email,))
+    cursor.execute("SELECT * FROM profesionales WHERE telefono = ?", (telefono,))
     row = cursor.fetchone()
     if row and verify_password(password, row["password_hash"]):
+        try:
+            estado_verificacion = row["estado_verificacion"]
+        except Exception:
+            estado_verificacion = None
         conn.close()
-        return {"rol": "profesional", "id": int(row["id"]), "nombre": row["nombre"], "email": row["email"]}
+        return {
+            "rol": "profesional",
+            "id": int(row["id"]),
+            "nombre": row["nombre"],
+            "estado_verificacion": estado_verificacion,
+        }
 
-    cursor.execute("SELECT * FROM clientes WHERE email = ?", (email,))
+    cursor.execute("SELECT * FROM clientes WHERE telefono = ?", (telefono,))
     row = cursor.fetchone()
     conn.close()
     if row and verify_password(password, row["password_hash"]):
-        return {"rol": "cliente", "id": int(row["id"]), "nombre": row["nombre"], "email": row["email"]}
+        return {"rol": "cliente", "id": int(row["id"]), "nombre": row["nombre"]}
     return None
 
 def crear_sesion(rol: str, user_id: int, dias: int = 30) -> str:
@@ -369,6 +435,38 @@ def guardar_foto_cliente(cliente_id: int, foto_bytes: bytes, foto_mime: str | No
     conn.commit()
     conn.close()
 
+def agregar_certificacion_profesional(profesional_id: int, titulo: str | None = None, archivo_bytes: bytes | None = None, archivo_mime: str | None = None) -> int:
+    conn = conectar_db()
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    cursor.execute(
+        """
+        INSERT INTO certificaciones_profesional (id_profesional, titulo, archivo, archivo_mime, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (int(profesional_id), (titulo or "").strip() or None, archivo_bytes, archivo_mime, now),
+    )
+    cert_id = int(cursor.lastrowid)
+    conn.commit()
+    conn.close()
+    return cert_id
+
+def listar_certificaciones_profesional(profesional_id: int):
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, id_profesional, titulo, archivo, archivo_mime, created_at
+        FROM certificaciones_profesional
+        WHERE id_profesional = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (int(profesional_id),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 def eliminar_profesional(profesional_id: int):
     conn = conectar_db()
     cursor = conn.cursor()
@@ -414,7 +512,7 @@ def eliminar_usuario_por_email(email: str):
     conn.close()
     return False
 
-def buscar_profesionales(departamento: str | None = None, especialidad: str | None = None, presupuesto_max: float | None = None):
+def buscar_profesionales(departamento: str | None = None, especialidad: str | None = None, presupuesto_max: float | None = None, texto: str | None = None):
     where = []
     params = []
     if departamento and departamento != "Todos":
@@ -426,6 +524,20 @@ def buscar_profesionales(departamento: str | None = None, especialidad: str | No
     if presupuesto_max is not None:
         where.append("(tarifa IS NULL OR tarifa <= ?)")
         params.append(float(presupuesto_max))
+    texto = (texto or "").strip()
+    if texto:
+        tokens = [t.strip().lower() for t in texto.split() if len(t.strip()) >= 3][:6]
+        for t in tokens:
+            where.append(
+                "("
+                "lower(nombre) LIKE ? OR "
+                "lower(especialidad) LIKE ? OR "
+                "lower(metodologia) LIKE ? OR "
+                "lower(certificacion) LIKE ?"
+                ")"
+            )
+            like = f"%{t}%"
+            params.extend([like, like, like, like])
     sql = "SELECT * FROM profesionales"
     if where:
         sql += " WHERE " + " AND ".join(where)

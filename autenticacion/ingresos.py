@@ -240,10 +240,10 @@ def mostrar_interfaz_login():
             """,
             unsafe_allow_html=True,
         )
-        email = st.text_input(
-            "Correo electrónico",
-            key="login_email",
-            placeholder="username",
+        telefono = st.text_input(
+            "Teléfono",
+            key="login_tel",
+            placeholder="3101234567",
             label_visibility="collapsed",
         )
         st.markdown("</div>", unsafe_allow_html=True)
@@ -267,22 +267,21 @@ def mostrar_interfaz_login():
         submitted = st.form_submit_button("Login", use_container_width=True)
 
     if submitted:
-        auth = autenticar_usuario(email, password)
-        if auth is None:
-            email_ok = email.strip().lower() == "test@test.com"
-            pass_ok = password == "1234"
-            if email_ok and pass_ok:
-                auth = {"rol": "cliente", "id": 0, "nombre": "test", "email": email.strip().lower()}
-
+        auth = autenticar_usuario(telefono, password)
         if auth is None:
             st.error("Usuario o contraseña incorrectos")
         else:
+            if auth.get("rol") == "profesional":
+                estado = (auth.get("estado_verificacion") or "pendiente").strip().lower()
+                if estado != "verificado":
+                    st.warning("Tu perfil profesional está en verificación. Cuando sea aprobado podrás iniciar sesión.")
+                    return
             st.session_state.logeado = True
             st.session_state.pantalla = "login"
             st.session_state.rol = auth["rol"]
             st.session_state.usuario_id = auth["id"]
             st.session_state.nombre_usuario = auth["nombre"]
-            st.session_state.email_usuario = auth["email"]
+            st.session_state.email_usuario = None
             token = crear_sesion(auth["rol"], auth["id"])
             _qp_set({"s": token, "tab": _qp_all().get("tab") or "Inicio"})
             st.rerun()

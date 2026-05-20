@@ -1,5 +1,6 @@
 import streamlit as st
 from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA, buscar_profesionales
+import unicodedata
 
 def _qp_all() -> dict:
     try:
@@ -30,22 +31,119 @@ def _qp_set(updates: dict):
     except Exception:
         st.experimental_set_query_params(**params)
 
+def _qp_get(key: str):
+    return _qp_all().get(key)
+
+def _normalize_text(texto: str) -> str:
+    texto = (texto or "").strip().lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in texto if not unicodedata.combining(c))
+
+def inferir_especialidades(texto: str) -> list[str]:
+    q = _normalize_text(texto)
+    if not q:
+        return []
+
+    reglas = {
+        "Nutricionista Deportivo": [
+            "nutricion",
+            "nutricionista",
+            "dieta",
+            "calorias",
+            "caloria",
+            "subir de peso",
+            "ganar peso",
+            "ganar masa",
+            "masa muscular",
+            "hipertrofia",
+            "aumentar peso",
+            "volumen",
+        ],
+        "Entrenador Personal": [
+            "entrenador",
+            "entrenamiento",
+            "rutina",
+            "gimnasio",
+            "fuerza",
+            "musculo",
+            "subir de peso",
+            "ganar masa",
+            "hipertrofia",
+            "bajar de peso",
+            "perder peso",
+            "definir",
+            "quemar grasa",
+            "cardio",
+        ],
+        "Fisioterapeuta": [
+            "fisio",
+            "fisioterapia",
+            "rehabilitacion",
+            "recuperacion",
+            "lesion",
+            "esguince",
+            "tendinitis",
+            "contractura",
+            "dolor",
+            "rodilla",
+            "espalda",
+            "hombro",
+            "codo",
+            "tobillo",
+            "cuello",
+            "postura",
+        ],
+    }
+
+    scores: list[tuple[int, str]] = []
+    for esp, kws in reglas.items():
+        score = 0
+        for kw in kws:
+            if _normalize_text(kw) in q:
+                score += 1
+        if score:
+            scores.append((score, esp))
+
+    scores.sort(reverse=True)
+    return [esp for _, esp in scores]
+
 def mostrar_busqueda():
     st.title("Encuentra tu Especialista")
     
     departamentos = ["Todos"] + list(DEPARTAMENTOS_COLOMBIA.keys())
     especialidades = ["Todos", "Entrenador Personal", "Nutricionista Deportivo", "Fisioterapeuta"]
 
+    q = (st.session_state.get("nav_search") or _qp_get("q") or "").strip()
+
+    if q:
+        col_q1, col_q2 = st.columns([0.82, 0.18])
+        with col_q1:
+            st.caption(f"Búsqueda: {q}")
+        with col_q2:
+            if st.button("Limpiar", key="limpiar_busqueda", use_container_width=True):
+                if "nav_search" in st.session_state:
+                    st.session_state.nav_search = ""
+                _qp_set({"q": None})
+                st.rerun()
+
+    sugeridas = inferir_especialidades(q) if q else []
+
     col1, col2 = st.columns(2)
     
     with col1:
         departamento = st.selectbox("Departamento", departamentos)
     with col2:
-        especialidad = st.selectbox("Especialidad", especialidades)
+        if sugeridas:
+            opciones = ["Ver todos"] + sugeridas
+            eleccion = st.selectbox("Según tu búsqueda, te recomiendo:", opciones)
+            especialidad = "Todos" if eleccion == "Ver todos" else eleccion
+        else:
+            especialidad = st.selectbox("Especialidad", especialidades)
 
     resultados = buscar_profesionales(
         departamento=departamento,
         especialidad=especialidad,
+        texto=q if (q and not sugeridas) else None,
     )
 
     titulo_depto = departamento if departamento != "Todos" else "Colombia"

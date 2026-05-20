@@ -1,4 +1,5 @@
 import streamlit as st
+from basededatos.manejarbasededatos import listar_certificaciones_profesional
 
 def perfil_profesional_view(datos):
     """Muestra la vista detallada del profesional para los clientes"""
@@ -21,9 +22,6 @@ def perfil_profesional_view(datos):
         tarifa = datos.get("tarifa")
         if tarifa is not None:
             st.success(f"Precio por sesión: ${float(tarifa):,.0f} COP")
-        email = datos.get("email")
-        if email:
-            st.write(f"Correo: {email}")
         telefono = datos.get("telefono")
         if telefono:
             st.write(f"Teléfono: {telefono}")
@@ -39,6 +37,19 @@ def perfil_profesional_view(datos):
         certificacion = datos.get("certificacion")
         if certificacion:
             st.write(f"Certificación: {certificacion}")
+
+        profesional_id = datos.get("id")
+        if profesional_id is not None:
+            certs = listar_certificaciones_profesional(int(profesional_id))
+            if certs:
+                st.write("Certificados:")
+                for c in certs:
+                    titulo = c.get("titulo")
+                    if titulo:
+                        st.write(titulo)
+                    archivo = c.get("archivo")
+                    if archivo:
+                        st.image(archivo, use_container_width=False, width=220)
 
         col_a, col_b, col_c = st.columns(3)
         edad = datos.get("edad")
