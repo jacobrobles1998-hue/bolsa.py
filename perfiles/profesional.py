@@ -1,5 +1,4 @@
 import streamlit as st
-from basededatos.manejarbasededatos import listar_certificaciones_profesional
 
 def perfil_profesional_view(datos):
     """Muestra la vista detallada del profesional para los clientes"""
@@ -15,16 +14,19 @@ def perfil_profesional_view(datos):
             st.metric("Experiencia", f"{int(experiencia)} años")
         ubicacion = datos.get("ciudad") or datos.get("departamento")
         if ubicacion:
-            st.write(f"Ubicación: {ubicacion}")
+            st.write(f"📍 {ubicacion}")
         especialidad = datos.get("especialidad")
         if especialidad:
-            st.write(f"Especialidad: {especialidad}")
+            st.write(f"🎯 {especialidad}")
         tarifa = datos.get("tarifa")
         if tarifa is not None:
             st.success(f"Precio por sesión: ${float(tarifa):,.0f} COP")
+        email = datos.get("email")
+        if email:
+            st.write(f"📧 {email}")
         telefono = datos.get("telefono")
         if telefono:
-            st.write(f"Teléfono: {telefono}")
+            st.write(f"📱 {telefono}")
 
     with col2:
         st.subheader("Metodología y Especialidad")
@@ -36,20 +38,7 @@ def perfil_profesional_view(datos):
 
         certificacion = datos.get("certificacion")
         if certificacion:
-            st.write(f"Certificación: {certificacion}")
-
-        profesional_id = datos.get("id")
-        if profesional_id is not None:
-            certs = listar_certificaciones_profesional(int(profesional_id))
-            if certs:
-                st.write("Certificados:")
-                for c in certs:
-                    titulo = c.get("titulo")
-                    if titulo:
-                        st.write(titulo)
-                    archivo = c.get("archivo")
-                    if archivo:
-                        st.image(archivo, use_container_width=False, width=220)
+            st.write(f"🏅 {certificacion}")
 
         col_a, col_b, col_c = st.columns(3)
         edad = datos.get("edad")

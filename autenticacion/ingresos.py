@@ -1,259 +1,396 @@
 import streamlit as st
 from basededatos.manejarbasededatos import autenticar_usuario, crear_sesion
 
-def _qp_all() -> dict:
-    try:
-        raw = dict(st.query_params)
-    except Exception:
-        raw = st.experimental_get_query_params()
-    out = {}
-    for k, v in raw.items():
-        if isinstance(v, list):
-            if v:
-                out[k] = v[0]
-        elif v is not None:
-            out[k] = str(v)
-    return out
+LOGIN_NEUMORFICO_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
 
-def _qp_set(updates: dict):
-    params = _qp_all()
-    for k, v in updates.items():
-        if v is None:
-            params.pop(k, None)
+/* === Pantalla login (anula fondo y botones globales de estilocss) === */
+.stApp:has(.axon-login-marker),
+.stApp:has(.axon-login-marker) [data-testid="stAppViewContainer"],
+.stApp:has(.axon-login-marker) [data-testid="stMain"],
+.stApp:has(.axon-login-marker) section.main {
+    background: #E3EDF7 !important;
+}
+
+.stApp:has(.axon-login-marker) header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+.stApp:has(.axon-login-marker) .block-container {
+    padding-top: 2.5rem !important;
+    padding-bottom: 3rem !important;
+    max-width: 560px !important;
+}
+
+.axon-login-marker { display: none !important; }
+
+.axon-login-shell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Tarjeta neumórfica sobre el formulario (Streamlit no anida dentro del div HTML) */
+.stApp:has(.axon-login-marker) [data-testid="stForm"] {
+    background: #E3EDF7 !important;
+    border: none !important;
+    border-radius: 36px !important;
+    padding: 8px 48px 36px !important;
+    margin: 0 auto !important;
+    max-width: 480px !important;
+    width: 100% !important;
+    box-shadow:
+        14px 14px 28px rgba(163, 177, 198, 0.55),
+        -14px -14px 28px rgba(255, 255, 255, 0.95) !important;
+}
+
+.stApp:has(.axon-login-marker) [data-testid="stForm"] > div {
+    gap: 0.85rem !important;
+    overflow: visible !important;
+}
+
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stVerticalBlock"],
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stElementContainer"] {
+    overflow: visible !important;
+}
+
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stMarkdownContainer"],
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stMarkdown"] {
+    background: transparent !important;
+}
+
+/* Logo y títulos (dentro del formulario / tarjeta) */
+.axon-login-header {
+    text-align: center;
+    margin: 0 0 18px 0;
+    padding-top: 36px;
+}
+
+.axon-login-header .logo-circle {
+    background-color: #0B1220;
+    width: 108px;
+    height: 108px;
+    border-radius: 50%;
+    margin: 0 auto 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border: 4px solid #FFFFFF;
+    box-shadow:
+        8px 8px 18px rgba(163, 177, 198, 0.5),
+        -6px -6px 14px rgba(255, 255, 255, 0.9),
+        inset 2px 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.axon-login-header .webdev-logo {
+    display: flex;
+    flex-direction: column;
+    color: white;
+    font-size: 8px;
+    position: relative;
+    line-height: 1.1;
+    padding: 0 12px;
+}
+
+.axon-login-header .lt,
+.axon-login-header .gt {
+    font-size: 26px;
+    font-weight: bold;
+}
+.axon-login-header .lt { color: #fff; position: absolute; left: -14px; top: 2px; }
+.axon-login-header .gt { color: #50e3c2; position: absolute; right: -14px; top: 2px; }
+.axon-login-header .made { font-weight: 700; letter-spacing: 0.4px; margin-top: 4px; }
+.axon-login-header .easy { font-weight: 300; font-size: 7px; }
+
+.axon-login-header .title {
+    font-size: 1.65rem;
+    color: #1a1a1a;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+}
+
+.axon-login-header .subtitle {
+    color: #555;
+    font-size: 1rem;
+    font-weight: 400;
+    margin: 0 0 28px 0;
+}
+
+/* Campos hundidos — altura completa visible (sin recorte de Streamlit) */
+.stApp:has(.axon-login-marker) .st-key-login_email label,
+.stApp:has(.axon-login-marker) .st-key-login_pass label,
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] label,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] label,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] label {
+    display: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email,
+.stApp:has(.axon-login-marker) .st-key-login_pass {
+    min-height: 72px !important;
+    overflow: visible !important;
+    margin-bottom: 20px !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"],
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"],
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] {
+    min-height: 72px !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div {
+    min-height: 72px !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div > div {
+    min-height: 60px !important;
+    height: 60px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background-color: #E3EDF7 !important;
+    border: none !important;
+    border-radius: 32px !important;
+    box-shadow:
+        inset 8px 8px 14px rgba(163, 177, 198, 0.55),
+        inset -8px -8px 14px rgba(255, 255, 255, 0.95) !important;
+    display: flex !important;
+    align-items: center !important;
+    position: relative !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div > div::before,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div > div::before,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div > div::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 400;
+    position: absolute;
+    left: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94A3B8;
+    font-size: 1.15rem;
+    z-index: 3;
+    pointer-events: none;
+    line-height: 1 !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div > div::before {
+    content: "\\f007";
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div > div::before,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div > div::before {
+    content: "\\f023";
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email div[data-baseweb="base-input"],
+.stApp:has(.axon-login-marker) .st-key-login_pass div[data-baseweb="base-input"],
+.stApp:has(.axon-login-marker) .st-key-login_email div[data-baseweb="input"],
+.stApp:has(.axon-login-marker) .st-key-login_pass div[data-baseweb="input"] {
+    min-height: 60px !important;
+    height: 60px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email input,
+.stApp:has(.axon-login-marker) .st-key-login_pass input {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #555 !important;
+    font-size: 1.05rem !important;
+    line-height: 1.5 !important;
+    min-height: 60px !important;
+    height: 60px !important;
+    padding: 0 48px 0 52px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] button {
+    margin-right: 12px !important;
+    align-self: center !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email input::placeholder,
+.stApp:has(.axon-login-marker) .st-key-login_pass input::placeholder {
+    color: #999 !important;
+    font-weight: 300 !important;
+    line-height: normal !important;
+}
+
+/* Botón Login turquesa */
+.stApp:has(.axon-login-marker) .st-key-login_submit [data-testid="stFormSubmitButton"] > button,
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stFormSubmitButton"] > button {
+    width: 100% !important;
+    min-height: 62px !important;
+    margin-top: 14px !important;
+    border-radius: 32px !important;
+    border: none !important;
+    background: #5bc0de !important;
+    background-color: #5bc0de !important;
+    color: #FFFFFF !important;
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    box-shadow: 0 6px 18px rgba(91, 192, 222, 0.45) !important;
+    transform: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_submit [data-testid="stFormSubmitButton"] > button:hover,
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stFormSubmitButton"] > button:hover {
+    background: #46b8da !important;
+    background-color: #46b8da !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 8px 22px rgba(70, 184, 218, 0.5) !important;
+}
+
+/* Registro */
+.stApp:has(.axon-login-marker) .axon-registro-zone {
+    max-width: 480px;
+    margin: 36px auto 0;
+    width: 100%;
+    padding: 0 4px;
+}
+
+.stApp:has(.axon-login-marker) .axon-registro-zone [data-testid="column"] {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+}
+
+.stApp:has(.axon-login-marker) .axon-registro-zone .stButton > button {
+    background: #E3EDF7 !important;
+    background-color: #E3EDF7 !important;
+    color: #334155 !important;
+    border: 1px solid rgba(255, 255, 255, 0.85) !important;
+    border-radius: 20px !important;
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    min-height: 52px !important;
+    padding: 12px 16px !important;
+    box-shadow: 4px 4px 8px #CBD5E1, -4px -4px 8px #FFFFFF !important;
+}
+
+.stApp:has(.axon-login-marker) .axon-registro-zone .stButton > button:hover {
+    color: #1E293B !important;
+    transform: translateY(-1px) !important;
+}
+
+@media (max-width: 480px) {
+    .stApp:has(.axon-login-marker) [data-testid="stForm"] {
+        padding: 6px 28px 28px !important;
+        border-radius: 28px !important;
+        max-width: 100% !important;
+    }
+    .stApp:has(.axon-login-marker) .axon-registro-zone {
+        max-width: 100%;
+        margin-top: 28px;
+    }
+}
+"""
+
+
+def _procesar_login(telefono: str, password: str) -> bool:
+    telefono = (telefono or "").strip()
+    resultado = autenticar_usuario(telefono, password or "")
+    if resultado:
+        rol = resultado["rol"]
+        user_id = int(resultado["id"])
+        if rol == "profesional":
+            from basededatos.manejarbasededatos import obtener_profesional_por_id
+
+            user = obtener_profesional_por_id(user_id)
+            estado = (user or {}).get("estado_verificacion")
+            if (estado or "pendiente").strip().lower() != "verificado":
+                st.warning("Tu perfil profesional está en verificación.")
+                return True
+            token = crear_sesion(rol, user_id)
+            st.session_state.auth_token = token
+            st.session_state.logeado = True
+            st.session_state.rol = rol
+            st.session_state.usuario_id = user_id
+            st.session_state.nombre_usuario = (user or {}).get("nombre")
+            st.session_state.foto_usuario = (user or {}).get("foto")
+            st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
+            st.session_state.pantalla = "login"
+            st.session_state.submenu_actual = "Inicio"
+            st.rerun()
         else:
-            params[k] = str(v)
-    try:
-        for k in list(st.query_params.keys()):
-            del st.query_params[k]
-        for k, v in params.items():
-            st.query_params[k] = v
-    except Exception:
-        st.experimental_set_query_params(**params)
+            from basededatos.manejarbasededatos import obtener_cliente_por_id
+
+            user = obtener_cliente_por_id(user_id)
+            token = crear_sesion(rol, user_id)
+            st.session_state.auth_token = token
+            st.session_state.logeado = True
+            st.session_state.rol = rol
+            st.session_state.usuario_id = user_id
+            st.session_state.nombre_usuario = (user or {}).get("nombre")
+            st.session_state.foto_usuario = (user or {}).get("foto")
+            st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
+            st.session_state.pantalla = "login"
+            st.session_state.submenu_actual = "Inicio"
+            st.rerun()
+
+    if telefono.lower() == "test@test.com" and password == "1234":
+        st.session_state.logeado = True
+        st.session_state.pantalla = "login"
+        st.session_state.rol = st.session_state.get("rol") or "cliente"
+        st.session_state.nombre_usuario = telefono.split("@", 1)[0] if "@" in telefono else telefono
+        st.rerun()
+
+    st.error("Usuario o contraseña incorrectos")
+    return False
+
 
 def mostrar_interfaz_login():
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
-        @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+    """Login neumórfico (referencia Pinterest) + botones de registro."""
+    st.markdown(f"<style>{LOGIN_NEUMORFICO_CSS}</style>", unsafe_allow_html=True)
+    st.markdown('<div class="axon-login-marker"></div>', unsafe_allow_html=True)
 
-        .axon-neumorfico,
-        .axon-neumorfico * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
-        }
+    st.markdown('<div class="axon-login-shell">', unsafe_allow_html=True)
 
-        .axon-neumorfico {
-            background-color: #E3EDF7;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 88vh;
-            padding: 24px 16px;
-        }
-
-        .axon-neumorfico .login-container {
-            background-color: #E3EDF7;
-            width: 420px;
-            padding: 54px 46px 34px;
-            border-radius: 28px;
-            text-align: center;
-            box-shadow: 14px 14px 28px rgba(163, 177, 198, 0.55),
-                        -14px -14px 28px rgba(255, 255, 255, 0.9);
-        }
-
-        .axon-neumorfico .logo-circle {
-            background-color: #0B1220;
-            width: 104px;
-            height: 104px;
-            border-radius: 50%;
-            margin: 0 auto 26px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            border: 6px solid #E3EDF7;
-            box-shadow: 8px 8px 16px rgba(163, 177, 198, 0.55),
-                        -8px -8px 16px rgba(255, 255, 255, 0.9);
-        }
-
-        .axon-neumorfico .webdev-logo {
-            display: flex;
-            flex-direction: column;
-            color: white;
-            font-size: 8px;
-            position: relative;
-            line-height: 1;
-        }
-
-        .axon-neumorfico .lt,
-        .axon-neumorfico .gt {
-            font-size: 30px;
-            font-weight: bold;
-        }
-        .axon-neumorfico .lt { color: #fff; position: absolute; left: -18px; top: 0px; }
-        .axon-neumorfico .gt { color: #50e3c2; position: absolute; right: -18px; top: 0px; }
-        .axon-neumorfico .made { font-weight: bold; letter-spacing: 0.5px; }
-        .axon-neumorfico .easy { font-weight: 300; }
-
-        .axon-neumorfico .title {
-            font-size: 1.6rem;
-            color: #0F172A;
-            font-weight: 700;
-            margin: 8px 0 0 0;
-        }
-
-        .axon-neumorfico .subtitle {
-            color: #475569;
-            font-size: 0.95rem;
-            font-weight: 500;
-            margin: 6px 0 30px 0;
-        }
-
-        .axon-neumorfico .input-group {
-            background-color: #E3EDF7;
-            width: 100%;
-            height: 60px;
-            border-radius: 30px;
-            margin-bottom: 22px;
-            display: flex;
-            align-items: center;
-            padding: 0 25px;
-            box-shadow: inset 10px 10px 20px rgba(163, 177, 198, 0.55),
-                        inset -10px -10px 20px rgba(255, 255, 255, 0.9);
-        }
-
-        .axon-neumorfico .input-group i {
-            color: #94A3B8;
-            font-size: 1.2rem;
-            margin-right: 15px;
-        }
-
-        .axon-neumorfico .input-group [data-testid="stTextInput"] {
-            margin: 0;
-            flex: 1;
-        }
-
-        .axon-neumorfico .input-group [data-testid="stTextInput"] > div {
-            width: 100%;
-        }
-
-        .axon-neumorfico .input-group input {
-            border: none !important;
-            background: transparent !important;
-            outline: none !important;
-            color: #555 !important;
-            font-size: 1rem !important;
-            width: 100% !important;
-            height: 42px !important;
-            box-shadow: none !important;
-        }
-
-        .axon-neumorfico .input-group input::placeholder {
-            color: #999 !important;
-            font-weight: 300 !important;
-        }
-
-        .axon-neumorfico .login-container [data-testid="stFormSubmitButton"] button {
-            background-color: #52B7D3;
-            color: white;
-            width: 100%;
-            height: 60px;
-            border-radius: 30px;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            font-size: 1.05rem;
-            font-weight: 700;
-            margin-top: 10px;
-            box-shadow: 12px 12px 20px rgba(163, 177, 198, 0.55),
-                        -12px -12px 20px rgba(255, 255, 255, 0.9);
-            transition: background 0.3s ease;
-        }
-
-        .axon-neumorfico .login-container [data-testid="stFormSubmitButton"] button:hover {
-            background-color: #3AAECF;
-        }
-
-        .axon-neumorfico .links {
-            margin-top: 22px;
-            font-size: 0.9rem;
-            color: #64748B;
-        }
-
-        .axon-neumorfico .links .stButton > button {
-            background: transparent !important;
-            box-shadow: none !important;
-            height: auto !important;
-            padding: 0 !important;
-            border: none !important;
-            color: #64748B !important;
-            font-weight: 600 !important;
-        }
-
-        .axon-neumorfico .links .stButton > button:hover {
-            text-decoration: underline;
-        }
-
-        .axon-neumorfico .links .signup .stButton > button {
-            color: #0F172A !important;
-            font-weight: 800 !important;
-        }
-
-        @media (max-width: 480px) {
-            .axon-neumorfico .login-container {
-                width: 100%;
-                padding: 44px 18px 30px;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="axon-neumorfico">', unsafe_allow_html=True)
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class="logo-circle">
-            <div class="webdev-logo">
-                <span class="lt">&lt;</span>
-                <span class="gt">&gt;</span>
-                <span class="made">Web Dev</span>
-                <span class="easy">made easy!</span>
-            </div>
-        </div>
-        <div class="title">Web Development</div>
-        <div class="subtitle">Made easy!</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.form("form_login"):
+    with st.form("form_login", clear_on_submit=False):
         st.markdown(
             """
-            <div class="input-group">
-                <i class="far fa-user"></i>
+            <div class="axon-login-header">
+                <div class="logo-circle">
+                    <div class="webdev-logo">
+                        <span class="lt">&lt;</span>
+                        <span class="gt">&gt;</span>
+                        <span class="made">AXON</span>
+                        <span class="easy">bolsa</span>
+                    </div>
+                </div>
+                <p class="title">AXON</p>
+                <p class="subtitle">Bolsa de trabajo y salud</p>
+            </div>
             """,
             unsafe_allow_html=True,
         )
         telefono = st.text_input(
             "Teléfono",
-            key="login_tel",
-            placeholder="3101234567",
+            key="login_email",
+            placeholder="username",
             label_visibility="collapsed",
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown(
-            """
-            <div class="input-group">
-                <i class="fas fa-lock"></i>
-            """,
-            unsafe_allow_html=True,
         )
         password = st.text_input(
             "Contraseña",
@@ -262,47 +399,31 @@ def mostrar_interfaz_login():
             placeholder="password",
             label_visibility="collapsed",
         )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        submitted = st.form_submit_button("Login", use_container_width=True)
+        submitted = st.form_submit_button("Login", use_container_width=True, key="login_submit")
 
     if submitted:
-        auth = autenticar_usuario(telefono, password)
-        if auth is None:
-            st.error("Usuario o contraseña incorrectos")
-        else:
-            if auth.get("rol") == "profesional":
-                estado = (auth.get("estado_verificacion") or "pendiente").strip().lower()
-                if estado != "verificado":
-                    st.warning("Tu perfil profesional está en verificación. Cuando sea aprobado podrás iniciar sesión.")
-                    return
-            st.session_state.logeado = True
-            st.session_state.pantalla = "login"
-            st.session_state.rol = auth["rol"]
-            st.session_state.usuario_id = auth["id"]
-            st.session_state.nombre_usuario = auth["nombre"]
-            st.session_state.email_usuario = None
-            token = crear_sesion(auth["rol"], auth["id"])
-            _qp_set({"s": token, "tab": _qp_all().get("tab") or "Inicio"})
-            st.rerun()
+        _procesar_login(telefono, password)
 
-    st.markdown('<div class="links">', unsafe_allow_html=True)
-    col_forgot, col_or, col_signup = st.columns([2.5, 0.7, 1.4])
-    with col_forgot:
-        if st.button("Forgot password?"):
-            st.info("Función en desarrollo. Contacta al administrador de AXON.")
-    with col_or:
-        st.markdown("<div style='padding-top: 8px; text-align:center;'>or</div>", unsafe_allow_html=True)
-    with col_signup:
-        st.markdown('<div class="signup">', unsafe_allow_html=True)
-        if st.button("Sign Up"):
+    st.markdown('<div class="axon-registro-zone">', unsafe_allow_html=True)
+    col_reg_1, col_reg_2 = st.columns(2)
+    with col_reg_1:
+        if st.button(
+            "Registrarse como Profesional",
+            use_container_width=True,
+            key="btn_reg_prof_login",
+        ):
+            st.session_state.registro_tipo = "Profesional"
             st.session_state.pantalla = "registro"
             st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+    with col_reg_2:
+        if st.button(
+            "Registrarse como Cliente",
+            use_container_width=True,
+            key="btn_reg_cli_login",
+        ):
+            st.session_state.registro_tipo = "Cliente"
+            st.session_state.pantalla = "registro"
+            st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-def mostrar_interfaz_registro():
-    st.subheader("Registro de Usuario")

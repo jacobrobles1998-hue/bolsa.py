@@ -8,25 +8,25 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. 🎯 INYECTAR FUENTE POPPINS EN TODA LA APP
-# st.html(
-#     """
-#     <style>
-#         /* Importamos la fuente Poppins directamente desde Google Fonts */
-#         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+# 2. INYECTAR FUENTE POPPINS EN TODA LA APP
+st.html(
+    """
+    <style>
+        /* Importamos la fuente Poppins directamente desde Google Fonts */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
-#         /* Aplicamos la fuente a todos los elementos de la interfaz de Streamlit */
-#         html, body, [class*="st-"], p, h1, h2, h3, h4, h5, h6, span, button, input, select, textarea {
-#             font-family: 'Poppins', sans-serif !important;
-#         }
+        /* Aplicamos la fuente a todos los elementos de la interfaz de Streamlit */
+        html, body, [class*="st-"], p, h1, h2, h3, h4, h5, h6, span, button, input, select, textarea {
+            font-family: 'Poppins', sans-serif !important;
+        }
         
-#         /* Aseguramos que los títulos y textos de los formularios también la hereden */
-#         .stMarkdown, .stButton, .stSelectbox, .stTextInput, .stTextArea, .stNumberInput {
-#             font-family: 'Poppins', sans-serif !important;
-#         }
-#     </style>
-#     """,
-# )
+        /* Aseguramos que los títulos y textos de los formularios también la hereden */
+        .stMarkdown, .stButton, .stSelectbox, .stTextInput, .stTextArea, .stNumberInput {
+            font-family: 'Poppins', sans-serif !important;
+        }
+    </style>
+    """,
+)
  # Nombre de la aplicación
 APP_NAME = "BOLSA: Red de Trabajo y Salud"
     

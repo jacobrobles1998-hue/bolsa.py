@@ -40,34 +40,7 @@ def barra_navegacion_glass():
             padding-top: 130px !important;
         }
 
-        /* 2. BOTONES EN ESTADO NORMAL (Extrusión limpia con relieve) */
-        .stButton > button {
-            border-radius: 18px !important;
-            border: 1px solid rgba(255, 255, 255, 0.9) !important;
-            background: #F0F2F5 !important;
-            color: #334155 !important;
-            font-weight: 600 !important;
-            font-size: 14px !important;
-            padding: 8px 20px !important;
-            height: 44px !important;
-            
-            /* Sombra neumórfica clásica: Luz arriba a la izquierda, sombra abajo a la derecha */
-            box-shadow: 
-                4px 4px 8px #CBD5E1, 
-                -4px -4px 8px #FFFFFF !important;
-            transition: all 0.2s ease-in-out !important;
-        }
-
-        /* Efecto al pasar el cursor */
-        .stButton > button:hover {
-            color: #1E293B !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 
-                5px 5px 10px #CBD5E1, 
-                -5px -5px 10px #FFFFFF !important;
-        }
-
-        /* 3. PESTAÑA SELECCIONADA: INICIO (Estilo Antracita Sólido "Overview") */
+        /* Pestaña seleccionada: Inicio (antracita, como en la barra) */
         .active-inicio > div > button {
             background: #2D3139 !important; /* Gris oscuro idéntico a la foto */
             color: #FFFFFF !important;
@@ -81,7 +54,7 @@ def barra_navegacion_glass():
             background: #2D3139 !important;
         }
 
-        /* 4. PESTAÑA SELECCIONADA CON GLOW (Efecto resplandor de luz inferior) */
+        /* Pestaña seleccionada con resplandor (Progreso / Configuración) */
         .active-glow > div > button {
             background: #F8FAFC !important;
             color: #0F172A !important;
@@ -189,6 +162,9 @@ def barra_navegacion_glass():
                 params.pop(k, None)
             else:
                 params[k] = str(v)
+        token = st.session_state.get("auth_token")
+        if token and st.session_state.get("logeado") and params.get("s") is None:
+            params["s"] = str(token)
         try:
             for k in list(st.query_params.keys()):
                 del st.query_params[k]
@@ -267,14 +243,35 @@ def barra_navegacion_glass():
                 on_change=_on_search_change,
             )
 
-        # Avatar o foto del usuario logeado
+        # Avatar clicable (botón Streamlit: no recarga la página ni pierde la sesión)
         with col_avatar:
             avatar_src = _avatar_src()
             st.markdown(
                 f"""
-                <img src="{avatar_src}" class="avatar-premium" alt="User">
+                <style>
+                .st-key-nav_avatar {{
+                    display: flex;
+                    justify-content: center;
+                }}
+                .st-key-nav_avatar button {{
+                    width: 68px !important;
+                    height: 68px !important;
+                    min-width: 68px !important;
+                    border-radius: 50% !important;
+                    background: url("{avatar_src}") center/cover no-repeat !important;
+                    border: 2px solid #FFFFFF !important;
+                    box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
+                    color: transparent !important;
+                    font-size: 0 !important;
+                    padding: 0 !important;
+                }}
+                </style>
                 """,
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
-            
-        st.markdown('</div>', unsafe_allow_html=True)
+            if st.button("\u00a0", key="nav_avatar", help="Ver mi perfil"):
+                st.session_state.submenu_actual = "perfil"
+                if "selected_profesional_id" in st.session_state:
+                    st.session_state.selected_profesional_id = None
+                _qp_set({"tab": "perfil", "prof": None})
+                st.rerun()

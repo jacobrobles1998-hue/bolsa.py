@@ -512,9 +512,11 @@ def eliminar_usuario_por_email(email: str):
     conn.close()
     return False
 
-def buscar_profesionales(departamento: str | None = None, especialidad: str | None = None, presupuesto_max: float | None = None, texto: str | None = None):
+def buscar_profesionales(departamento: str | None = None, especialidad: str | None = None, presupuesto_max: float | None = None, texto: str | None = None, solo_verificados: bool = True):
     where = []
     params = []
+    if solo_verificados:
+        where.append("lower(COALESCE(estado_verificacion, 'pendiente')) = 'verificado'")
     if departamento and departamento != "Todos":
         where.append("departamento = ?")
         params.append(departamento)
@@ -593,6 +595,26 @@ def listar_clientes_de_profesional(id_profesional: int):
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def obtener_todos_los_profesionales():
+    """Profesionales verificados visibles en el directorio de Inicio."""
+    conn = conectar_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT id, nombre, especialidad, departamento, ciudad, tarifa, metodologia, experiencia
+            FROM profesionales
+            WHERE lower(COALESCE(estado_verificacion, 'pendiente')) = 'verificado'
+            ORDER BY created_at DESC
+            """
+        )
+        return [dict(r) for r in cursor.fetchall()]
+    except Exception as e:
+        print(f"Error en obtener_todos_los_profesionales: {e}")
+        return []
+    finally:
+        conn.close()
 
 DEPARTAMENTOS_COLOMBIA = {
     "Atlántico": [

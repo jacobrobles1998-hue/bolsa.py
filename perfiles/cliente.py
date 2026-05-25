@@ -1,52 +1,63 @@
 import streamlit as st
 
-def perfil_cliente_view(datos_usuario):
-    """Panel de control para el cliente (atleta)"""
+
+def _mostrar_campo(etiqueta: str, valor, unidad: str = "", *, uid: int = 0):
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return
+    texto = valor
+    if unidad and valor is not None:
+        if unidad == "m" and isinstance(valor, (int, float)):
+            texto = f"{float(valor):.2f} {unidad}"
+        elif unidad == "kg" and isinstance(valor, (int, float)):
+            texto = f"{float(valor):.1f} {unidad}"
+        elif unidad == "años" and isinstance(valor, (int, float)):
+            texto = f"{int(valor)} {unidad}"
+        else:
+            texto = f"{valor} {unidad}".strip()
+    safe = "".join(c if c.isalnum() else "_" for c in etiqueta)
+    st.text_input(etiqueta, value=str(texto), disabled=True, key=f"cli_ro_{uid}_{safe}")
+
+
+def perfil_cliente_view(datos_usuario, *, mostrar_foto: bool = True):
+    """Muestra el formulario de registro del cliente en modo solo lectura."""
     nombre = datos_usuario.get("nombre") or "Cliente"
-    st.header(nombre)
+    uid = int(datos_usuario.get("id") or 0)
+    st.markdown(f"### {nombre}")
+    st.caption("Estos son los datos que registraste. Solo lectura.")
 
-    foto = datos_usuario.get("foto")
-    if foto:
-        st.image(foto, use_container_width=False, width=160)
-    
-    tab1, tab2 = st.tabs(["Mi Perfil", "Citas"])
+    if mostrar_foto:
+        foto = datos_usuario.get("foto")
+        if foto:
+            mime = datos_usuario.get("foto_mime") or "image/jpeg"
+            st.image(foto, caption="Tu foto de perfil", width=160)
 
-    with tab1:
-        st.subheader("Mis Datos")
-        col_m1, col_m2, col_m3 = st.columns(3)
-        edad = datos_usuario.get("edad")
-        if edad is not None:
-            col_m1.metric("Edad", f"{int(edad)}")
-        altura = datos_usuario.get("altura")
-        if altura is not None:
-            col_m2.metric("Altura", f"{float(altura):.2f} m")
-        peso = datos_usuario.get("peso")
-        if peso is not None:
-            col_m3.metric("Peso", f"{float(peso):.1f} kg")
+    st.markdown("#### Datos de cuenta y contacto")
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        _mostrar_campo("Nombre completo", datos_usuario.get("nombre"), uid=uid)
+        _mostrar_campo("Departamento de residencia", datos_usuario.get("departamento"), uid=uid)
+        _mostrar_campo("Patología familiar", datos_usuario.get("patologia_familiar"), uid=uid)
+    with col_c2:
+        _mostrar_campo("Teléfono", datos_usuario.get("telefono"), uid=uid)
+        _mostrar_campo("Género", datos_usuario.get("genero"), uid=uid)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            email = datos_usuario.get("email")
-            if email:
-                st.write(f"Correo: {email}")
-            telefono = datos_usuario.get("telefono")
-            if telefono:
-                st.write(f"Teléfono: {telefono}")
-        with col2:
-            depto = datos_usuario.get("departamento")
-            if depto:
-                st.write(f"Departamento: {depto}")
-            genero = datos_usuario.get("genero")
-            if genero:
-                st.write(f"Género: {genero}")
+    st.markdown("---")
+    st.markdown("#### Datos básicos")
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b1:
+        _mostrar_campo("Edad (Años)", datos_usuario.get("edad"), "años", uid=uid)
+    with col_b2:
+        _mostrar_campo("Altura (Metros)", datos_usuario.get("altura"), "m", uid=uid)
+    with col_b3:
+        _mostrar_campo("Peso actual (Kg)", datos_usuario.get("peso"), "kg", uid=uid)
 
-        patologia = datos_usuario.get("patologia_familiar")
-        if patologia:
-            st.write(f"Patología familiar: {patologia}")
-        metodologia = datos_usuario.get("metodologia")
-        if metodologia:
-            st.write(metodologia)
-
-    with tab2:
-        st.subheader("Próximas Sesiones")
-        st.write("📅 Mañana 8:00 AM con Entrenador Carlos")
+    metodologia = datos_usuario.get("metodologia")
+    if metodologia and str(metodologia).strip():
+        st.markdown("#### Información para tus profesionales")
+        st.text_area(
+            "Condiciones o notas",
+            value=str(metodologia).strip(),
+            disabled=True,
+            height=120,
+            key=f"cli_ro_{uid}_metodologia",
+        )

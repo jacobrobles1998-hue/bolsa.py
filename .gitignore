@@ -1,0 +1,9 @@
+# Archivos de caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Otros archivos basura
+.DS_Store
+.env

@@ -1,7 +1,12 @@
 
 import streamlit as st
-from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
-from basededatos.manejarbasededatos import agregar_certificacion_profesional, crear_cliente, crear_profesional
+
+from basededatos.manejarbasededatos import (
+    DEPARTAMENTOS_COLOMBIA,
+    agregar_certificacion_profesional,
+    crear_cliente,
+    crear_profesional,
+)
 
 def formulario_registro_profesional_ui():
     """
@@ -40,15 +45,15 @@ def formulario_registro_profesional_ui():
             st.markdown("Información personal")
             genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="prof_genero")
 
-            st.markdown("---")
-            st.markdown("Ficha física")
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                edad = st.number_input("Edad (Años)", min_value=18, max_value=90, value=24, step=1, key="prof_edad")
-            with col_f2:
-                altura = st.number_input("Altura (Metros)", min_value=1.20, max_value=2.30, value=1.75, step=0.01, format="%.2f", key="prof_altura")
-            with col_f3:
-                peso = st.number_input("Peso Actual (Kg)", min_value=40.0, max_value=150.0, value=74.0, step=0.1, format="%.1f", key="prof_peso")
+            # st.markdown("---")
+            # st.markdown("Ficha física")
+            # col_f1, col_f2, col_f3 = st.columns(3)
+            # with col_f1:
+            #     edad = st.number_input("Edad (Años)", min_value=18, max_value=90, value=24, step=1, key="prof_edad")
+            # with col_f2:
+            #     altura = st.number_input("Altura (Metros)", min_value=1.20, max_value=2.30, value=1.75, step=0.01, format="%.2f", key="prof_altura")
+            # with col_f3:
+            #     peso = st.number_input("Peso Actual (Kg)", min_value=40.0, max_value=150.0, value=74.0, step=0.1, format="%.1f", key="prof_peso")
 
             continuar = st.form_submit_button("Continuar", use_container_width=True)
 
@@ -65,9 +70,9 @@ def formulario_registro_profesional_ui():
                         "departamento": depto_sel,
                         "ciudad": None,
                         "genero": genero,
-                        "edad": int(edad) if edad is not None else None,
-                        "altura": float(altura) if altura is not None else None,
-                        "peso": float(peso) if peso is not None else None,
+                        # "edad": int(edad) if edad is not None else None,
+                        # "altura": float(altura) if altura is not None else None,
+                        # "peso": float(peso) if peso is not None else None,
                     }
                     st.session_state.prof_reg_step = 2
                     st.rerun()
@@ -93,7 +98,7 @@ def formulario_registro_profesional_ui():
             tarifa = st.number_input("Tarifa por Sesión (COP)", min_value=10000.0, value=60000.0, step=5000.0, format="%.2f", key="prof_tarifa")
 
         st.markdown("---")
-
+        #  lista de institucions fisio
         universidad = None
         if especialidad == "Fisioterapeuta":
             st.markdown("Formación (Fisioterapia)")
@@ -122,6 +127,8 @@ def formulario_registro_profesional_ui():
                 "Universidad Industrial de Santander",
                 "Universidad de Boyacá",
             ]
+
+            #  lista de instituciones entrenadores
             universidad = st.selectbox("¿Dónde estudiaste?", universidades_fisio, key="prof_uni_fisio")
         elif especialidad == "Entrenador Personal":
             st.markdown("Formación (Entrenamiento)")
@@ -144,8 +151,37 @@ def formulario_registro_profesional_ui():
                     "American College of Sports Medicine (ACSM)",
                     "Escuela Colombiana de Entrenamiento y Fitness (ECEP)",
                 ]
+                # lista de instituciones nutricionistas 
                 universidad = st.selectbox("Fuera del país", entidades_internacionales, key="prof_uni_entrenador_int")
-
+        elif especialidad == "Nutricionista Deportivo":  # <- CORREGIDO: Coincide exactamente con tu selectbox principal
+            st.markdown("Formación (Nutrición Deportiva)")
+            origen_nutricion = st.radio("Origen", ["En Colombia", "Fuera del país"], horizontal=True, key="prof_nutricionista_origen")
+           
+           
+            if origen_nutricion == "En Colombia":
+                universidades_colombia_nutricion = [
+                    "Universidad de Ciencias Aplicadas y Ambientales (UDCA)",
+                    "Universidad Nacional de Colombia",
+                    "Universidad de Antioquia (UdeA)",
+                    "Universidad El Bosque",
+                    "Institución Universitaria Escuela Nacional del Deporte",
+                    "Universidad Pontificia Bolivariana (UPB)",
+                    "Universidad de los Andes"
+                ]
+                universidad = st.selectbox("En Colombia", universidades_colombia_nutricion, key="prof_uni_nutricionista_col")
+                
+            else:
+                entidades_internacionales_nutricion = [
+                    "Universidad Católica San Antonio de Murcia (UCAM)",
+                    "Universitat Oberta de Catalunya (UOC)",
+                    "Universidad Europea de Madrid",
+                    "Universidad de Barcelona (UB)",
+                    "International Society of Sports Nutrition (ISSN)",
+                    "National Academy of Sports Medicine (NASM)",
+                    "American Council on Exercise (ACE)"
+                ]
+                universidad = st.selectbox("Fuera del país", entidades_internacionales_nutricion, key="prof_uni_nutricionista_int")
+       
         if "prof_cert_count" not in st.session_state:
             st.session_state.prof_cert_count = 1
 
