@@ -143,7 +143,7 @@ def mostrar_busqueda():
     resultados = buscar_profesionales(
         departamento=departamento,
         especialidad=especialidad,
-        texto=q if (q and not sugeridas) else None,
+        texto=q if q else None,
     )
 
     titulo_depto = departamento if departamento != "Todos" else "Colombia"

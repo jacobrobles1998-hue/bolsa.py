@@ -133,15 +133,14 @@ def barra_navegacion_glass():
         
         /* Foto circular flotante de perfil */
         .avatar-premium {
-            width: 56px;
-            height: 56px;
+            width: 68px;
+            height: 68px;
             border: 2px solid #FFFFFF !important;
             box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
             object-fit: cover;
             display: block;
             margin: 0 auto;
         }
-        </style>
         </style>
         """,
         unsafe_allow_html=True
@@ -263,7 +262,7 @@ def barra_navegacion_glass():
             st.text_input(
                 "BUSCADOR_NAV",
                 key="nav_search",
-                placeholder="Buscar atletas o rutinas...",
+                placeholder="Escribe tu necesidad: rodilla, hombro, masa muscular, bajar de peso...",
                 label_visibility="collapsed",
                 on_change=_on_search_change,
             )

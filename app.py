@@ -343,13 +343,23 @@ else:
     elif st.session_state.pantalla == "registro":
         st.subheader("¿Cómo quieres unirte a AXON?")
         
-        # Radio button para que el usuario elija su camino
-        tipo = st.radio("Selecciona tu perfil:", ["Profesional", "Cliente"], horizontal=True)
+        if "registro_tipo" not in st.session_state:
+            st.session_state.registro_tipo = "Profesional"
+
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            if st.button("Inscribirme como Profesional", use_container_width=True):
+                st.session_state.registro_tipo = "Profesional"
+                st.rerun()
+        with col_r2:
+            if st.button("Inscribirme como Cliente", use_container_width=True):
+                st.session_state.registro_tipo = "Cliente"
+                st.rerun()
         
         st.markdown("---")
         
         # Según lo que elija, llamamos a la función correcta
-        if tipo == "Profesional":
+        if st.session_state.registro_tipo == "Profesional":
             formulario_registro_profesional_ui()
         else:
             formulario_registro_cliente_ui() # Aquí llamas al que te salía en la foto c60f88a3
