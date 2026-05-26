@@ -1,178 +1,304 @@
-/* Importar fuente */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
 
-/* Reset básico y fondo principal */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    font-family: 'Poppins', sans-serif;
+/* === Pantalla login (anula fondo y botones globales de estilocss) === */
+.stApp:has(.axon-login-marker),
+.stApp:has(.axon-login-marker) [data-testid="stAppViewContainer"],
+.stApp:has(.axon-login-marker) [data-testid="stMain"],
+.stApp:has(.axon-login-marker) section.main {
+    background: #E3EDF7 !important;
 }
 
-body {
-    background-color: hwb(0 100% 0%); /* Fondo claro de la imagen */
+.stApp:has(.axon-login-marker) header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+.stApp:has(.axon-login-marker) .block-container {
+    padding-top: 2.5rem !important;
+    padding-bottom: 3rem !important;
+    max-width: 560px !important;
+}
+
+.axon-login-marker { display: none !important; }
+
+.axon-login-shell {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
+    width: 100%;
+    font-family: 'Poppins', sans-serif;
 }
 
-/* Cabecera */
-.header {
+/* Tarjeta neumórfica sobre el formulario (Streamlit no anida dentro del div HTML) */
+.stApp:has(.axon-login-marker) [data-testid="stForm"] {
+    background: #E3EDF7 !important;
+    border: none !important;
+    border-radius: 36px !important;
+    padding: 8px 48px 36px !important;
+    margin: 0 auto !important;
+    max-width: 480px !important;
+    width: 100% !important;
+    box-shadow:
+        14px 14px 28px rgba(163, 177, 198, 0.55),
+        -14px -14px 28px rgba(255, 255, 255, 0.95) !important;
+}
+
+.stApp:has(.axon-login-marker) [data-testid="stForm"] > div {
+    gap: 0.85rem !important;
+    overflow: visible !important;
+}
+
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stVerticalBlock"],
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stElementContainer"] {
+    overflow: visible !important;
+}
+
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stMarkdownContainer"],
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stMarkdown"] {
+    background: transparent !important;
+}
+
+/* Logo y títulos (dentro del formulario / tarjeta) */
+.axon-login-header {
     text-align: center;
-    margin-bottom: 40px;
+    margin: 0 0 18px 0;
+    padding-top: 36px;
 }
 
-.header h1 {
-    font-size: 2.5rem;
-    color: #111111; /* Color azul-verdoso oscuro */
-    font-weight: 600;
-}
-
-.header h2 {
-    font-size: 2rem;
-    color: #111111;
-    font-weight: 500;
-    margin-top: 5px;
-}
-
-/* Contenedor del Formulario */
-.login-container {
-    background-color: #d6d4d4;
-    width: 380px;
-    padding: 50px 40px 30px;
-    border-radius: 40px;
-    text-align: center;
-    
-    /* Neumorfismo Exterior (sombra clara arriba a la izq, oscura abajo a la der) */
-    box-shadow: -10px -10px 15px rgba(255, 255, 255, 0.9),
-                10px 10px 15px rgba(0, 0, 0, 0.05);
-}
-
-/* Representación del Logo */
-.logo-circle {
-    background-color: #0c0022; /* Fondo casi negro */
-    width: 100px;
-    height: 100px;
+.axon-login-header .logo-circle {
+    background-color: #0B1220;
+    width: 108px;
+    height: 108px;
     border-radius: 50%;
-    margin: 0 auto 30px;
+    margin: 0 auto 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    border: 3px solid #e6ebf1;
-    overflow: hidden;
-
-    /* Sombra para que flote un poco más que el contenedor */
-    box-shadow: inset -3px -3px 5px rgba(255, 255, 255, 0.05),
-                inset 3px 3px 5px rgba(0, 0, 0, 0.3),
-                0 5px 10px rgba(0,0,0,0.2);
+    border: 4px solid #FFFFFF;
+    box-shadow:
+        8px 8px 18px rgba(163, 177, 198, 0.5),
+        -6px -6px 14px rgba(255, 255, 255, 0.9),
+        inset 2px 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-.webdev-logo {
+.axon-login-header .webdev-logo {
     display: flex;
     flex-direction: column;
     color: white;
     font-size: 8px;
     position: relative;
-    line-height: 1;
+    line-height: 1.1;
+    padding: 0 12px;
 }
 
-.lt, .gt { font-size: 30px; font-weight: bold; }
-.lt { color: #fff; position: absolute; left: -18px; top: 0px;}
-.gt { color: #50e3c2; position: absolute; right: -18px; top: 0px;} /* Verde agua */
-.made { font-weight: bold; letter-spacing: 0.5px;}
-.easy { font-weight: 300;}
+.axon-login-header .lt,
+.axon-login-header .gt {
+    font-size: 26px;
+    font-weight: bold;
+}
+.axon-login-header .lt { color: #fff; position: absolute; left: -14px; top: 2px; }
+.axon-login-header .gt { color: #50e3c2; position: absolute; right: -14px; top: 2px; }
+.axon-login-header .made { font-weight: 700; letter-spacing: 0.4px; margin-top: 4px; }
+.axon-login-header .easy { font-weight: 300; font-size: 7px; }
 
-/* Títulos Interiores */
-.login-container h3 {
-    color: #1a1a1a;
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 5px;
+.axon-login-header .title {
+    font-size: 1.65rem;
+    color: #0a0a0a;
+    font-weight: 700;
+    margin: 0 0 6px 0;
 }
 
-.subtitle {
-    color: #555;
-    font-size: 0.9rem;
-    font-weight: 300;
-    margin-bottom: 40px;
-}
-
-/* Grupos de Entrada */
-.input-group {
-    background-color: #e6ebf1;
-    width: 100%;
-    height: 60px;
-    border-radius: 30px;
-    margin-bottom: 25px;
-    display: flex;
-    align-items: center;
-    padding: 0 25px;
-    
-    /* Neumorfismo Interior (sombra oscura interior arriba a la izq, clara abajo a la der) */
-    box-shadow: inset 8px 8px 10px rgba(0, 0, 0, 0.04),
-                inset -8px -8px 10px rgba(255, 255, 255, 1);
-}
-
-.input-group i {
-    color: #999;
-    font-size: 1.2rem;
-    margin-right: 15px;
-}
-
-.input-group input {
-    border: none;
-    background: transparent;
-    outline: none;
-    color: #555;
+.axon-login-header .subtitle {
+    color: #0a0a0a;
     font-size: 1rem;
+    font-weight: 400;
+    margin: 0 0 28px 0;
+}
+
+/* Campos hundidos — altura completa visible (sin recorte de Streamlit) */
+.stApp:has(.axon-login-marker) .st-key-login_email label,
+.stApp:has(.axon-login-marker) .st-key-login_pass label,
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] label,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] label,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] label {
+    display: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email,
+.stApp:has(.axon-login-marker) .st-key-login_pass {
+    min-height: 72px !important;
+    overflow: visible !important;
+    margin-bottom: 20px !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"],
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"],
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] {
+    min-height: 72px !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div {
+    min-height: 72px !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div > div,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div > div {
+    min-height: 60px !important;
+    height: 60px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background-color: #E3EDF7 !important;
+    border: none !important;
+    border-radius: 32px !important;
+    box-shadow:
+        inset 8px 8px 14px rgba(163, 177, 198, 0.55),
+        inset -8px -8px 14px rgba(255, 255, 255, 0.95) !important;
+    display: flex !important;
+    align-items: center !important;
+    position: relative !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div > div::before,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div > div::before,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div > div::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 400;
+    position: absolute;
+    left: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94A3B8;
+    font-size: 1.15rem;
+    z-index: 3;
+    pointer-events: none;
+    line-height: 1 !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email [data-testid="stTextInput"] > div > div::before {
+    content: "\f007";
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stTextInput"] > div > div::before,
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] > div > div::before {
+    content: "\f023";
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email div[data-baseweb="base-input"],
+.stApp:has(.axon-login-marker) .st-key-login_pass div[data-baseweb="base-input"],
+.stApp:has(.axon-login-marker) .st-key-login_email div[data-baseweb="input"],
+.stApp:has(.axon-login-marker) .st-key-login_pass div[data-baseweb="input"] {
+    min-height: 60px !important;
+    height: 60px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email input,
+.stApp:has(.axon-login-marker) .st-key-login_pass input {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #555 !important;
+    font-size: 1.05rem !important;
+    line-height: 1.5 !important;
+    min-height: 60px !important;
+    height: 60px !important;
+    padding: 0 48px 0 52px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_pass [data-testid="stPasswordInput"] button {
+    margin-right: 12px !important;
+    align-self: center !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_email input::placeholder,
+.stApp:has(.axon-login-marker) .st-key-login_pass input::placeholder {
+    color: #999 !important;
+    font-weight: 300 !important;
+    line-height: normal !important;
+}
+
+/* Botón Login turquesa */
+.stApp:has(.axon-login-marker) .st-key-login_submit [data-testid="stFormSubmitButton"] > button,
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stFormSubmitButton"] > button {
+    width: 100% !important;
+    min-height: 62px !important;
+    margin-top: 14px !important;
+    border-radius: 32px !important;
+    border: none !important;
+    background: #5bc0de !important;
+    background-color: #5bc0de !important;
+    color: #FFFFFF !important;
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    box-shadow: 0 6px 18px rgba(91, 192, 222, 0.45) !important;
+    transform: none !important;
+}
+
+.stApp:has(.axon-login-marker) .st-key-login_submit [data-testid="stFormSubmitButton"] > button:hover,
+.stApp:has(.axon-login-marker) [data-testid="stForm"] [data-testid="stFormSubmitButton"] > button:hover {
+    background: #46b8da !important;
+    background-color: #46b8da !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 8px 22px rgba(70, 184, 218, 0.5) !important;
+}
+
+/* Registro */
+.stApp:has(.axon-login-marker) .axon-registro-zone {
+    max-width: 480px;
+    margin: 36px auto 0;
     width: 100%;
+    padding: 0 4px;
 }
 
-.input-group input::placeholder {
-    color: #999;
-    font-weight: 300;
+.stApp:has(.axon-login-marker) .axon-registro-zone [data-testid="column"] {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
 }
 
-/* Botón Login */
-button {
-    background-color: #5bc0de; /* Azul cian brillante */
-    color: white;
-    width: 100%;
-    height: 60px;
-    border-radius: 30px;
-    border: none;
-    outline: none;
-    cursor: pointer;
-    font-size: 1.1rem;
-    font-weight: 500;
-    margin-top: 15px;
-    
-    /* Pequeña sombra de elevación */
-    box-shadow: 0 5px 15px rgba(91, 192, 222, 0.4);
-    transition: background 0.3s ease;
+.stApp:has(.axon-login-marker) .axon-registro-zone .stButton > button {
+    background: #E3EDF7 !important;
+    background-color: #E3EDF7 !important;
+    color: #334155 !important;
+    border: 1px solid rgba(255, 255, 255, 0.85) !important;
+    border-radius: 20px !important;
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    min-height: 52px !important;
+    padding: 12px 16px !important;
+    box-shadow: 4px 4px 8px #CBD5E1, -4px -4px 8px #FFFFFF !important;
 }
 
-button:hover {
-    background-color: #46b8da;
+.stApp:has(.axon-login-marker) .axon-registro-zone .stButton > button:hover {
+    color: #1E293B !important;
+    transform: translateY(-1px) !important;
 }
 
-/* Links Inferiores */
-.links {
-    margin-top: 25px;
-    font-size: 0.9rem;
-    color: #555;
-}
-
-.links a {
-    color: #333;
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.links a:hover {
-    text-decoration: underline;
+@media (max-width: 480px) {
+    .stApp:has(.axon-login-marker) [data-testid="stForm"] {
+        padding: 6px 28px 28px !important;
+        border-radius: 28px !important;
+        max-width: 100% !important;
+    }
+    .stApp:has(.axon-login-marker) .axon-registro-zone {
+        max-width: 100%;
+        margin-top: 28px;
+    }
 }
