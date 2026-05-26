@@ -8,7 +8,8 @@ def perfil_profesional_view(datos):
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.image(datos.get("foto", "https://via.placeholder.com/150"), use_column_width=True)
+        foto = datos.get("foto") or "https://via.placeholder.com/150"
+        st.image(foto, use_column_width=True)
         experiencia = datos.get("experiencia")
         if experiencia is not None:
             st.metric("Experiencia", f"{int(experiencia)} años")

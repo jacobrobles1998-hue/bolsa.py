@@ -9,12 +9,211 @@ from datetime import timedelta
 
 
 DB_PATH = Path(__file__).resolve().parent / "bolsa_data.db"
+_SCHEMA_ENSURED = False
+_ENSURING_SCHEMA = False
+
+
+def _asegurar_schema(conn: sqlite3.Connection):
+    global _SCHEMA_ENSURED, _ENSURING_SCHEMA
+    if _SCHEMA_ENSURED or _ENSURING_SCHEMA:
+        return
+    _ENSURING_SCHEMA = True
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name IN ('clientes', 'profesionales', 'sesiones')
+            """
+        )
+        existentes = {r[0] for r in cursor.fetchall()}
+        if {"clientes", "profesionales", "sesiones"}.issubset(existentes):
+            _SCHEMA_ENSURED = True
+            return
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS profesionales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                telefono TEXT,
+                password_hash TEXT NOT NULL,
+                foto BLOB,
+                foto_mime TEXT,
+                departamento TEXT,
+                ciudad TEXT,
+                genero TEXT,
+                edad INTEGER,
+                altura REAL,
+                peso REAL,
+                especialidad TEXT,
+                universidad TEXT,
+                certificacion TEXT,
+                experiencia INTEGER,
+                tarifa REAL,
+                metodologia TEXT,
+                estado_verificacion TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                telefono TEXT,
+                password_hash TEXT NOT NULL,
+                foto BLOB,
+                foto_mime TEXT,
+                departamento TEXT,
+                ciudad TEXT,
+                genero TEXT,
+                edad INTEGER,
+                altura REAL,
+                peso REAL,
+                patologia_familiar TEXT,
+                metodologia TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contratos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_profesional INTEGER NOT NULL,
+                id_cliente INTEGER NOT NULL,
+                monto REAL,
+                fecha TEXT,
+                estado TEXT NOT NULL DEFAULT 'activo',
+                FOREIGN KEY(id_profesional) REFERENCES profesionales(id),
+                FOREIGN KEY(id_cliente) REFERENCES clientes(id)
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sesiones (
+                token TEXT PRIMARY KEY,
+                rol TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS certificaciones_profesional (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_profesional INTEGER NOT NULL,
+                titulo TEXT,
+                archivo BLOB,
+                archivo_mime TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(id_profesional) REFERENCES profesionales(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        _ensure_columns(
+            cursor,
+            "profesionales",
+            [
+                ("nombre", "TEXT"),
+                ("email", "TEXT"),
+                ("telefono", "TEXT"),
+                ("password_hash", "TEXT"),
+                ("foto", "BLOB"),
+                ("foto_mime", "TEXT"),
+                ("departamento", "TEXT"),
+                ("ciudad", "TEXT"),
+                ("genero", "TEXT"),
+                ("edad", "INTEGER"),
+                ("altura", "REAL"),
+                ("peso", "REAL"),
+                ("especialidad", "TEXT"),
+                ("universidad", "TEXT"),
+                ("certificacion", "TEXT"),
+                ("experiencia", "INTEGER"),
+                ("tarifa", "REAL"),
+                ("metodologia", "TEXT"),
+                ("estado_verificacion", "TEXT"),
+                ("created_at", "TEXT"),
+            ],
+        )
+        _ensure_columns(
+            cursor,
+            "clientes",
+            [
+                ("nombre", "TEXT"),
+                ("email", "TEXT"),
+                ("telefono", "TEXT"),
+                ("password_hash", "TEXT"),
+                ("foto", "BLOB"),
+                ("foto_mime", "TEXT"),
+                ("departamento", "TEXT"),
+                ("ciudad", "TEXT"),
+                ("genero", "TEXT"),
+                ("edad", "INTEGER"),
+                ("altura", "REAL"),
+                ("peso", "REAL"),
+                ("patologia_familiar", "TEXT"),
+                ("metodologia", "TEXT"),
+                ("created_at", "TEXT"),
+            ],
+        )
+        _ensure_columns(
+            cursor,
+            "contratos",
+            [
+                ("id_profesional", "INTEGER"),
+                ("id_cliente", "INTEGER"),
+                ("monto", "REAL"),
+                ("fecha", "TEXT"),
+                ("estado", "TEXT NOT NULL DEFAULT 'activo'"),
+            ],
+        )
+        _ensure_columns(
+            cursor,
+            "certificaciones_profesional",
+            [
+                ("id_profesional", "INTEGER"),
+                ("titulo", "TEXT"),
+                ("archivo", "BLOB"),
+                ("archivo_mime", "TEXT"),
+                ("created_at", "TEXT"),
+            ],
+        )
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_profesionales_especialidad ON profesionales(especialidad)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_profesionales_departamento ON profesionales(departamento)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_contratos_profesional ON contratos(id_profesional)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_contratos_cliente ON contratos(id_cliente)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_certificaciones_profesional_prof ON certificaciones_profesional(id_profesional)")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_profesionales_email ON profesionales(email) WHERE email IS NOT NULL")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_clientes_email ON clientes(email) WHERE email IS NOT NULL")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_expires ON sesiones(expires_at)")
+
+        conn.commit()
+        _SCHEMA_ENSURED = True
+    finally:
+        _ENSURING_SCHEMA = False
 
 def conectar_db():
     """Crea la conexión con el archivo de base de datos"""
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    _asegurar_schema(conn)
     return conn
 
 def hash_password(password: str) -> str:
@@ -436,6 +635,8 @@ def guardar_foto_cliente(cliente_id: int, foto_bytes: bytes, foto_mime: str | No
     conn.close()
 
 def agregar_certificacion_profesional(profesional_id: int, titulo: str | None = None, archivo_bytes: bytes | None = None, archivo_mime: str | None = None) -> int:
+    if not archivo_bytes:
+        raise ValueError("El archivo del certificado es obligatorio")
     conn = conectar_db()
     cursor = conn.cursor()
     now = datetime.utcnow().isoformat(timespec="seconds")

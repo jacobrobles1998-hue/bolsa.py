@@ -59,7 +59,7 @@ BOTONES_AXON_CSS = """
 }
 
 """
-
+# dashboard css negro (todo el fondo de pantalla)
 css__styles = f"""
 {BOTONES_AXON_CSS}
 

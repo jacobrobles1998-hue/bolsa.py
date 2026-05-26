@@ -340,16 +340,24 @@ else:
 
         col_a, col_b = st.columns(2)
         with col_a:
-            if rol != "profesional":
-                if st.button("Omitir por ahora", use_container_width=True):
+            if st.button("Omitir por ahora", use_container_width=True):
+                if rol == "profesional":
+                    st.session_state.logeado = False
+                    st.session_state.pantalla = "login"
+                    st.session_state.rol = None
+                    st.session_state.usuario_id = None
+                    st.session_state.nombre_usuario = None
+                    st.success(
+                        "Perfil creado. Tu perfil quedó en verificación; cuando sea aprobado podrás iniciar sesión."
+                    )
+                    st.rerun()
+                else:
                     token = crear_sesion(str(rol), int(usuario_id))
                     st.session_state.auth_token = token
                     _qp_set({"s": token, "tab": _qp_get("tab") or "Inicio"})
                     st.session_state.logeado = True
                     st.session_state.pantalla = "login"
                     st.rerun()
-            else:
-                st.caption("La foto es obligatoria para verificación.")
         with col_b:
             if st.button("Guardar y Continuar", use_container_width=True, disabled=(foto_file is None)):
                 foto_bytes = foto_file.getvalue() if foto_file is not None else None

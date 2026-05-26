@@ -218,6 +218,21 @@ def formulario_registro_profesional_ui():
                 st.session_state.prof_reg_step = 1
                 st.rerun()
 
+            cert_archivos: list[tuple[bytes, str | None]] = []
+            for i in range(int(st.session_state.get("prof_cert_count") or 0)):
+                foto_obj = st.session_state.get(f"prof_cert_up_{i}")
+                if foto_obj is None:
+                    continue
+                foto_bytes = foto_obj.getvalue()
+                if not foto_bytes:
+                    continue
+                foto_mime = getattr(foto_obj, "type", None)
+                cert_archivos.append((foto_bytes, foto_mime))
+
+            if not cert_archivos:
+                st.error("Debes subir al menos una foto de tu diploma/certificado para continuar.")
+                st.stop()
+
             try:
                 profesional_id = crear_profesional(
                     {
@@ -236,15 +251,17 @@ def formulario_registro_profesional_ui():
                 st.session_state.rol = None
                 st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
             else:
-                for i in range(int(st.session_state.get("prof_cert_count") or 0)):
-                    foto_obj = st.session_state.get(f"prof_cert_up_{i}")
-                    foto_bytes = foto_obj.getvalue() if foto_obj is not None else None
-                    foto_mime = getattr(foto_obj, "type", None)
-                    if foto_bytes:
-                        try:
-                            agregar_certificacion_profesional(int(profesional_id), None, foto_bytes, foto_mime)
-                        except Exception:
-                            pass
+                certificados_guardados = 0
+                for foto_bytes, foto_mime in cert_archivos:
+                    agregar_certificacion_profesional(int(profesional_id), None, foto_bytes, foto_mime)
+                    certificados_guardados += 1
+
+                if certificados_guardados <= 0:
+                    from basededatos.manejarbasededatos import eliminar_profesional
+
+                    eliminar_profesional(int(profesional_id))
+                    st.error("No se pudieron guardar tus certificados. Intenta de nuevo.")
+                    st.stop()
 
                 st.session_state.prof_cert_count = 1
                 st.session_state.prof_reg_step = 1
