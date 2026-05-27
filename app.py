@@ -1,6 +1,9 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import base64
+import html as _html
 import random
+from urllib.parse import quote
 
 # 1. Configuración de la página
 st.set_page_config(
@@ -26,6 +29,7 @@ from autenticacion.registro import formulario_registro_profesional_ui, formulari
 from perfiles.profesional import perfil_profesional_view    
 from perfiles.cliente import perfil_cliente_view
 from basededatos.manejarbasededatos import (
+    asegurar_profesional_demo,
     buscar_profesionales,
     crear_contrato,
     crear_sesion,
@@ -46,12 +50,50 @@ from interfaz_base import barra_navegacion_glass
 
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) 
 
+def _h(value) -> str:
+    return _html.escape("" if value is None else str(value))
+
+def _img_src(foto_bytes, mime: str | None):
+    if not foto_bytes:
+        return "https://via.placeholder.com/96"
+    try:
+        b64 = base64.b64encode(foto_bytes).decode("ascii")
+        mt = (mime or "image/jpeg").strip() or "image/jpeg"
+        return f"data:{mt};base64,{b64}"
+    except Exception:
+        return "https://via.placeholder.com/96"
+
+def _wa_url(telefono) -> str | None:
+    digits = "".join(ch for ch in str(telefono or "") if ch.isdigit())
+    if not digits:
+        return None
+    if digits.startswith("57"):
+        num = digits
+    elif len(digits) == 10:
+        num = "57" + digits
+    else:
+        num = digits
+    return f"https://wa.me/{num}"
+
+def _href_inicio_prof(prof_id: int, token: str | None, q_buscar: str | None):
+    parts = []
+    if token:
+        parts.append(f"s={quote(str(token))}")
+    parts.append("tab=Inicio")
+    parts.append(f"prof={quote(str(prof_id))}")
+    if q_buscar:
+        parts.append(f"q={quote(str(q_buscar))}")
+    return "?" + "&".join(parts) + "#detalle-prof"
+
 def _qp_all() -> dict:
     try: return dict(st.query_params)
     except Exception: return st.experimental_get_query_params()
 
 def _qp_get(key: str):
-    return _qp_all().get(key)
+    v = _qp_all().get(key)
+    if isinstance(v, (list, tuple)):
+        return v[0] if v else None
+    return v
 
 def _qp_set(updates: dict):
     params = _qp_all()
@@ -94,6 +136,13 @@ if "db_inicializada" not in st.session_state:
         st.session_state.db_inicializada = True
     except Exception as e:
         st.error(f"Error al inicializar la base de datos: {e}")
+
+if "demo_prof_ready" not in st.session_state:
+    try:
+        asegurar_profesional_demo()
+        st.session_state.demo_prof_ready = True
+    except Exception:
+        st.session_state.demo_prof_ready = False
 
 # INICIALIZACIÓN COMPLETA DEL STATE
 if "pantalla" not in st.session_state: st.session_state.pantalla = "login"  
@@ -164,11 +213,40 @@ if st.session_state.logeado:
         st.rerun()
 
     _sync_user_foto(rol, int(usuario_id))
-    barra_navegacion_glass()
     vista = st.session_state.submenu_actual
+    en_detalle_prof = (
+        vista == "Inicio"
+        and rol == "cliente"
+        and st.session_state.get("selected_profesional_id") is not None
+    )
+    if not en_detalle_prof:
+        barra_navegacion_glass()
 
     if vista == "Inicio":
         if rol == "cliente":
+            profesional_id = st.session_state.get("selected_profesional_id")
+            if profesional_id:
+                profesional = obtener_profesional_por_id(int(profesional_id))
+                if profesional:
+                    col_back, _ = st.columns([0.25, 0.75])
+                    with col_back:
+                        if st.button("← Volver", key="volver_listado_prof", use_container_width=True):
+                            st.session_state.selected_profesional_id = None
+                            _qp_set({"prof": None, "tab": "Inicio"})
+                            st.rerun()
+
+                    st.write("---")
+                    perfil_profesional_view(profesional)
+                    tarifa = profesional.get("tarifa")
+                    monto = float(tarifa) if tarifa is not None else None
+                    if st.button("Contratar a este profesional", use_container_width=True, key="contratar_prof_detalle"):
+                        crear_contrato(id_cliente=int(usuario_id), id_profesional=int(profesional_id), monto=monto)
+                        st.session_state.selected_profesional_id = None
+                        _qp_set({"prof": None, "tab": "Inicio"})
+                        st.success("¡Contrato solicitado de manera exitosa!")
+                        st.rerun()
+                    st.stop()
+
             st.markdown(
                 "<h2 style='color: white; margin-bottom: 0;'>Profesionales disponibles</h2>",
                 unsafe_allow_html=True,
@@ -177,7 +255,7 @@ if st.session_state.logeado:
                 "Aquí solo verás perfiles de profesionales verificados que ofrecen sus servicios "
                 "(entrenamiento, nutrición, fisioterapia, etc.). Usa el buscador de arriba para filtrar."
             )
-
+            
             q_buscar = (_qp_get("q") or st.session_state.get("nav_search") or "").strip()
             try:
                 if q_buscar:
@@ -187,25 +265,152 @@ if st.session_state.logeado:
             except Exception:
                 todos_los_profesionales = []
 
-            if todos_los_profesionales:
-                random.shuffle(todos_los_profesionales)
-                for prof in todos_los_profesionales:
-                    with st.container():
-                        esp_label = str(prof.get('especialidad', 'Profesional')).upper()
-                        tarifa_val = prof.get('tarifa')
-                        tarifa_text = f"| 💰 Tarifa: ${float(tarifa_val):,.0f}" if tarifa_val else ""
-                        
-                        st.markdown(f"""
-                        <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 4px solid #00F0FF;'>
-                            <h4 style='color: white; margin: 0;'>{prof.get('nombre', 'Profesional')}</h4>
-                            <p style='color: #00F0FF; margin: 5px 0; font-weight: bold; font-size: 14px;'>✨ {esp_label}</p>
-                            <p style='color: #ccc; margin: 5px 0;'>📍 {prof.get('ciudad', '')}, {prof.get('departamento', '')} {tarifa_text}</p>
+            profs = []
+            for p in (todos_los_profesionales or []):
+                estado = (p.get("estado_verificacion") or "").strip().lower()
+                if estado and estado != "verificado":
+                    continue
+                if p.get("id") is None:
+                    continue
+                profs.append(p)
+
+            if not q_buscar:
+                profs = profs[:1]
+
+            if profs:
+                random.shuffle(profs)
+                token_sesion = st.session_state.get("auth_token")
+
+                st.markdown(
+                    """
+                    <style>
+                        .axon-prof-carousel{max-width:980px;margin:10px auto 0;position:relative;overflow:hidden;padding:12px 8px;height:560px}
+                        .axon-prof-track{display:flex;flex-direction:column;gap:16px;will-change:transform}
+                        .axon-prof-carousel.axon-anim .axon-prof-track{animation:axon-prof-scroll 48s linear infinite}
+                        .axon-prof-carousel.axon-anim:hover .axon-prof-track{animation-play-state:paused}
+                        @keyframes axon-prof-scroll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}
+                            .axon-prof-card{background:#fff;border-radius:22px;box-shadow:0 16px 40px rgba(15,23,42,.16);display:grid;grid-template-columns:92px 1fr 190px;gap:14px;padding:16px;align-items:center;cursor:pointer;border:1px solid rgba(15,23,42,.08);position:relative}
+                            .axon-card-overlay{position:absolute;inset:0;z-index:2;border-radius:22px;display:block}
+                        .axon-prof-left{display:flex;align-items:center;justify-content:center}
+                        .axon-prof-avatar{width:78px;height:78px;border-radius:50%;object-fit:cover;border:4px solid #EAB308;box-shadow:0 6px 16px rgba(15,23,42,.18)}
+                        .axon-prof-name{font-weight:800;letter-spacing:.2px;color:#0B1220;font-size:20px;line-height:1.05}
+                        .axon-prof-role{color:#334155;font-weight:700;font-size:12.5px;margin-top:3px;text-transform:uppercase}
+                        .axon-prof-meta{margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;color:#334155;font-size:12.5px;font-weight:600}
+                        .axon-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#F1F5F9;border:1px solid rgba(15,23,42,.08)}
+                        .axon-prof-desc{margin-top:10px;color:#475569;font-size:13px;line-height:1.35;max-width:620px}
+                        .axon-prof-tags{margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;color:#0B1220;font-weight:700;font-size:12px}
+                        .axon-tag{display:inline-flex;align-items:center;gap:8px}
+                        .axon-prof-right{display:flex;flex-direction:column;gap:10px;align-items:flex-end;justify-content:center}
+                        .axon-price{color:#0B1220;font-weight:800;font-size:14px;text-align:right}
+                        .axon-wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#0EA5A4;color:#fff;text-decoration:none;border-radius:16px;padding:12px 14px;font-weight:800;font-size:13px;box-shadow:0 10px 22px rgba(14,165,164,.32);width:100%}
+                        .axon-wa:hover{filter:brightness(.98)}
+                        .axon-card-ghost{opacity:.9}
+                        @media (max-width: 900px){
+                            .axon-prof-carousel{height:640px}
+                            .axon-prof-card{grid-template-columns:78px 1fr;grid-template-rows:auto auto}
+                            .axon-prof-right{grid-column:1 / -1;flex-direction:row;justify-content:space-between;align-items:center}
+                            .axon-wa{width:auto}
+                        }
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                def _icono_especialidad(esp: str) -> str:
+                    e = (esp or "").strip().lower()
+                    if "nutri" in e:
+                        return "🍏"
+                    if "fisio" in e:
+                        return "🦴"
+                    if "entren" in e:
+                        return "🏋️"
+                    return "⭐"
+
+                def _resumen(texto: str | None, max_len: int = 130) -> str:
+                    t = (texto or "").strip()
+                    if not t:
+                        return "Perfil profesional en verificación. Revisa su especialidad, experiencia y tarifa para elegir el mejor para ti."
+                    if len(t) <= max_len:
+                        return t
+                    return t[: max_len - 1].rstrip() + "…"
+
+                cards = []
+                for prof in profs:
+                    pid = int(prof.get("id") or 0)
+                    nombre = _h(prof.get("nombre") or "Profesional")
+                    esp = prof.get("especialidad") or "Profesional"
+                    esp_label = _h(str(esp).upper())
+                    exp = prof.get("experiencia")
+                    exp_text = f"+{int(exp)} años" if exp is not None else "Experiencia"
+                    ciudad = (prof.get("ciudad") or "").strip()
+                    depto = (prof.get("departamento") or "").strip()
+                    ubicacion = ", ".join([x for x in [ciudad, depto] if x])
+                    ubicacion = _h(ubicacion) if ubicacion else "Colombia"
+                    tarifa_val = prof.get("tarifa")
+                    tarifa_text = f"${float(tarifa_val):,.0f} COP" if tarifa_val is not None else "Tarifa a convenir"
+                    desc = _h(_resumen(prof.get("metodologia")))
+                    icono = _icono_especialidad(str(esp))
+                    foto_src = _img_src(prof.get("foto"), prof.get("foto_mime"))
+                    href = _href_inicio_prof(pid, token_sesion, q_buscar)
+                    wa = _wa_url(prof.get("telefono"))
+                    wa_html = (
+                        f"<a class='axon-wa' href='{_h(wa)}' target='_blank' rel='noopener'>CONTACTAR POR WHATSAPP</a>"
+                        if wa
+                        else "<div class='axon-wa axon-card-ghost'>CONTACTAR</div>"
+                    )
+                    meta_badge = "✅ Verificado"
+                    card_class = "axon-prof-card"
+                    cards.append(
+                        f"""
+                        <div class="{card_class}">
+                            <a class="axon-card-overlay" href="{_h(href)}" aria-label="Ver perfil" target="_self"></a>
+                            <div class="axon-prof-left">
+                                <img class="axon-prof-avatar" src="{_h(foto_src)}" alt="Foto de {nombre}">
+                            </div>
+                            <div class="axon-prof-mid">
+                                <div class="axon-prof-name">{nombre}</div>
+                                <div class="axon-prof-role">{esp_label}</div>
+                                <div class="axon-prof-meta">
+                                    <span class="axon-pill">{meta_badge}</span>
+                                    <span class="axon-pill">🕒 { _h(exp_text) }</span>
+                                    <span class="axon-pill">📍 {ubicacion}</span>
+                                </div>
+                                <div class="axon-prof-desc">{desc}</div>
+                                <div class="axon-prof-tags">
+                                    <span class="axon-tag">{_h(icono)} {_h(esp)}</span>
+                                </div>
+                            </div>
+                            <div class="axon-prof-right">
+                                <div class="axon-price">💰 { _h(tarifa_text) }</div>
+                                {wa_html}
+                            </div>
                         </div>
-                        """, unsafe_allow_html=True)
-                        
-                        if st.button("Ver perfil detallado", key=f"btn_global_{prof.get('id')}", use_container_width=True):
-                            st.session_state.selected_profesional_id = prof.get('id')
-                            st.rerun()
+                        """
+                    )
+
+                if len(cards) >= 3:
+                    track = "\n".join(cards + cards)
+                    st.markdown(
+                        f"""
+                        <div class="axon-prof-carousel axon-anim">
+                            <div class="axon-prof-track">
+                                {track}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"""
+                        <div class="axon-prof-carousel">
+                            <div class="axon-prof-track">
+                                {"".join(cards)}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
             else:
                 if q_buscar:
                     st.info("No hay profesionales verificados que coincidan con tu búsqueda.")
@@ -215,21 +420,6 @@ if st.session_state.logeado:
                         "Los nuevos perfiles aparecen cuando el administrador los aprueba."
                     )
 
-            profesional_id = st.session_state.get("selected_profesional_id")
-            if profesional_id:
-                profesional = obtener_profesional_por_id(profesional_id)
-                if profesional:
-                    st.write("---")
-                    perfil_profesional_view(profesional)
-                    tarifa = profesional.get("tarifa")
-                    monto = float(tarifa) if tarifa is not None else None
-                    if st.button("Contratar a este profesional", use_container_width=True):
-                        crear_contrato(id_cliente=int(usuario_id), id_profesional=int(profesional_id), monto=monto)
-                        st.session_state.selected_profesional_id = None
-                        _qp_set({"prof": None})
-                        st.success("¡Contrato solicitado de manera exitosa!")
-                        st.rerun()
-                        
         elif rol == "profesional":
             st.title("Panel de Control Profesional")
             st.write(f"Bienvenido de nuevo, {nombre_usuario}")

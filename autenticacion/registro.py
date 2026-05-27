@@ -35,6 +35,11 @@ def formulario_registro_profesional_ui():
                     list(DEPARTAMENTOS_COLOMBIA.keys()),
                     key="prof_depto",
                 )
+                barrio_sel = st.selectbox(
+                    "Barrio / Ciudad",
+                    DEPARTAMENTOS_COLOMBIA.get(depto_sel, []),
+                    key="prof_barrio",
+                )
 
             with col_c2:
                 telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="prof_tel")
@@ -68,7 +73,7 @@ def formulario_registro_profesional_ui():
                         "telefono": telefono.strip(),
                         "password": contrasena,
                         "departamento": depto_sel,
-                        "ciudad": None,
+                        "ciudad": barrio_sel,
                         "genero": genero,
                         # "edad": int(edad) if edad is not None else None,
                         # "altura": float(altura) if altura is not None else None,

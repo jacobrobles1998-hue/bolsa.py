@@ -6,6 +6,9 @@ import os
 from datetime import datetime
 import secrets
 from datetime import timedelta
+import base64
+import unicodedata
+from difflib import SequenceMatcher
 
 
 DB_PATH = Path(__file__).resolve().parent / "bolsa_data.db"
@@ -222,6 +225,112 @@ def hash_password(password: str) -> str:
     iterations = 200_000
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return f"pbkdf2_sha256${iterations}${salt.hex()}${dk.hex()}"
+
+def asegurar_profesional_demo() -> int:
+    conn = conectar_db()
+    cursor = conn.cursor()
+    demo_tel = "3000000000"
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    cursor.execute("SELECT id FROM profesionales WHERE telefono = ? LIMIT 1", (demo_tel,))
+    row = cursor.fetchone()
+    if row:
+        prof_id = int(row["id"])
+        cursor.execute(
+            """
+            UPDATE profesionales
+            SET nombre = ?,
+                telefono = ?,
+                departamento = ?,
+                ciudad = ?,
+                genero = ?,
+                edad = ?,
+                altura = ?,
+                peso = ?,
+                especialidad = ?,
+                universidad = ?,
+                experiencia = ?,
+                tarifa = ?,
+                metodologia = ?,
+                estado_verificacion = ?
+            WHERE id = ?
+            """,
+            (
+                "Andres Torres",
+                demo_tel,
+                "Bogotá D.C.",
+                "Bogota",
+                "Masculino",
+                29,
+                1.78,
+                80.0,
+                "Entrenador Personal",
+                "Servicio Nacional de Aprendizaje (SENA)",
+                5,
+                70000.0,
+                "Hipertrofia, fuerza y recomposición corporal con programación progresiva y seguimiento semanal.",
+                "verificado",
+                prof_id,
+            ),
+        )
+        cursor.execute("SELECT 1 FROM certificaciones_profesional WHERE id_profesional = ? LIMIT 1", (prof_id,))
+        if cursor.fetchone() is None:
+            png_1x1 = base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+tmxQAAAAASUVORK5CYII="
+            )
+            cursor.execute(
+                """
+                INSERT INTO certificaciones_profesional (id_profesional, titulo, archivo, archivo_mime, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (prof_id, "Certificado demo", png_1x1, "image/png", now),
+            )
+        conn.commit()
+        conn.close()
+        return prof_id
+
+    cursor.execute(
+        """
+        INSERT INTO profesionales
+        (nombre, email, telefono, password_hash, foto, foto_mime, departamento, ciudad, genero, edad, altura, peso, especialidad, universidad, certificacion, experiencia, tarifa, metodologia, estado_verificacion, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "Andres Torres",
+            f"demo_{secrets.token_hex(6)}@axon.local",
+            demo_tel,
+            hash_password("12345678"),
+            None,
+            None,
+            "Bogotá D.C.",
+            "Bogota",
+            "Masculino",
+            29,
+            1.78,
+            80.0,
+            "Entrenador Personal",
+            "Servicio Nacional de Aprendizaje (SENA)",
+            None,
+            5,
+            70000.0,
+            "Hipertrofia, fuerza y recomposición corporal con programación progresiva y seguimiento semanal.",
+            "verificado",
+            now,
+        ),
+    )
+    prof_id = int(cursor.lastrowid)
+    png_1x1 = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+tmxQAAAAASUVORK5CYII="
+    )
+    cursor.execute(
+        """
+        INSERT INTO certificaciones_profesional (id_profesional, titulo, archivo, archivo_mime, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (prof_id, "Certificado demo", png_1x1, "image/png", now),
+    )
+    conn.commit()
+    conn.close()
+    return prof_id
 
 def verify_password(password: str, stored: str) -> bool:
     if not stored or "$" not in stored:
@@ -714,19 +823,28 @@ def eliminar_usuario_por_email(email: str):
     return False
 
 def buscar_profesionales(departamento: str | None = None, especialidad: str | None = None, presupuesto_max: float | None = None, texto: str | None = None, solo_verificados: bool = True):
-    where = []
-    params = []
+    def _norm(s: str) -> str:
+        s = (s or "").strip().lower()
+        s = unicodedata.normalize("NFKD", s)
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        return " ".join(s.split())
+
+    where_base = []
+    params_base = []
     if solo_verificados:
-        where.append("lower(COALESCE(estado_verificacion, 'pendiente')) = 'verificado'")
+        where_base.append("lower(COALESCE(estado_verificacion, 'pendiente')) = 'verificado'")
     if departamento and departamento != "Todos":
-        where.append("departamento = ?")
-        params.append(departamento)
+        where_base.append("departamento = ?")
+        params_base.append(departamento)
     if especialidad and especialidad != "Todos":
-        where.append("especialidad = ?")
-        params.append(especialidad)
+        where_base.append("especialidad = ?")
+        params_base.append(especialidad)
     if presupuesto_max is not None:
-        where.append("(tarifa IS NULL OR tarifa <= ?)")
-        params.append(float(presupuesto_max))
+        where_base.append("(tarifa IS NULL OR tarifa <= ?)")
+        params_base.append(float(presupuesto_max))
+
+    where = list(where_base)
+    params = list(params_base)
     texto = (texto or "").strip()
     if texto:
         tokens = [t.strip().lower() for t in texto.split() if len(t.strip()) >= 3][:6]
@@ -750,7 +868,42 @@ def buscar_profesionales(departamento: str | None = None, especialidad: str | No
     cursor.execute(sql, tuple(params))
     rows = cursor.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    resultados = [dict(r) for r in rows]
+    if resultados or not texto:
+        return resultados
+
+    sql_base = "SELECT * FROM profesionales"
+    if where_base:
+        sql_base += " WHERE " + " AND ".join(where_base)
+    sql_base += " ORDER BY created_at DESC"
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(sql_base, tuple(params_base))
+    candidatos = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    q = _norm(texto)
+    if not q:
+        return []
+    scores = []
+    for r in candidatos:
+        hay = " ".join(
+            [
+                _norm(r.get("nombre")),
+                _norm(r.get("especialidad")),
+                _norm(r.get("metodologia")),
+                _norm(r.get("certificacion")),
+                _norm(r.get("departamento")),
+                _norm(r.get("ciudad")),
+            ]
+        ).strip()
+        if not hay:
+            continue
+        score = SequenceMatcher(None, q, hay).ratio()
+        scores.append((score, r))
+    scores.sort(key=lambda x: x[0], reverse=True)
+    filtrados = [r for s, r in scores if s >= 0.35][:30]
+    return filtrados
 
 def crear_contrato(id_cliente: int, id_profesional: int, monto: float | None = None):
     conn = conectar_db()
