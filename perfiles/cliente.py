@@ -25,6 +25,24 @@ def perfil_cliente_view(datos_usuario, *, mostrar_foto: bool = True):
     st.markdown(f"### {nombre}")
     st.caption("Estos son los datos que registraste. Solo lectura.")
 
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stTextInput"] input[disabled] {
+            color: #111 !important;
+            -webkit-text-fill-color: #111 !important;
+            opacity: 1 !important;
+        }
+        div[data-testid="stTextArea"] textarea[disabled] {
+            color: #111 !important;
+            -webkit-text-fill-color: #111 !important;
+            opacity: 1 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if mostrar_foto:
         foto = datos_usuario.get("foto")
         if foto:

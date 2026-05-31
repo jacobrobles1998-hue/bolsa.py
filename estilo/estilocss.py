@@ -63,6 +63,19 @@ BOTONES_AXON_CSS = """
 css__styles = f"""
 {BOTONES_AXON_CSS}
 
+/* Texto más oscuro en campos deshabilitados (solo lectura) */
+div[data-testid="stTextInput"] input[disabled] {{
+    color: #111 !important;
+    -webkit-text-fill-color: #111 !important;
+    opacity: 1 !important;
+}}
+
+div[data-testid="stTextArea"] textarea[disabled] {{
+    color: #111 !important;
+    -webkit-text-fill-color: #111 !important;
+    opacity: 1 !important;
+}}
+
 /* FONDO DEGRADADO PREMIUM (dashboard; login usa #E3EDF7) */
     .stApp:not(:has(.axon-login-marker)) {{
         background: linear-gradient(135deg, #ffffff 0%, #0ffffff 70%, #000000 100%) !important;

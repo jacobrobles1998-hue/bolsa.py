@@ -24,63 +24,52 @@ def formulario_registro_profesional_ui():
     step = int(st.session_state.prof_reg_step)
 
     if step == 1:
-        with st.form("form_registro_prof_step_1"):
-            st.markdown("Datos de cuenta y contacto")
-            col_c1, col_c2 = st.columns(2)
+        st.markdown("Datos de cuenta y contacto")
+        col_c1, col_c2 = st.columns(2)
 
-            with col_c1:
-                nombre_completo = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez", key="prof_nombre")
-                depto_sel = st.selectbox(
-                    "Departamento de residencia",
-                    list(DEPARTAMENTOS_COLOMBIA.keys()),
-                    key="prof_depto",
-                )
-                barrio_sel = st.selectbox(
-                    "Barrio / Ciudad",
-                    DEPARTAMENTOS_COLOMBIA.get(depto_sel, []),
-                    key="prof_barrio",
-                )
+        with col_c1:
+            nombre_completo = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez", key="prof_nombre")
+            depto_sel = st.selectbox(
+                "Departamento de residencia",
+                list(DEPARTAMENTOS_COLOMBIA.keys()),
+                key="prof_depto",
+            )
+            ciudades = DEPARTAMENTOS_COLOMBIA.get(depto_sel, [])
+            if ciudades and st.session_state.get("prof_barrio") not in ciudades:
+                st.session_state["prof_barrio"] = ciudades[0]
+            barrio_sel = st.selectbox(
+                "Barrio / Ciudad",
+                ciudades,
+                key="prof_barrio",
+            )
 
-            with col_c2:
-                telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="prof_tel")
-                contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="prof_pass")
-                confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="prof_pass_conf")
+        with col_c2:
+            telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="prof_tel")
+            contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="prof_pass")
+            confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="prof_pass_conf")
 
-            st.markdown("---")
-            st.markdown("Información personal")
-            genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="prof_genero")
+        st.markdown("---")
+        st.markdown("Información personal")
+        genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="prof_genero")
 
-            # st.markdown("---")
-            # st.markdown("Ficha física")
-            # col_f1, col_f2, col_f3 = st.columns(3)
-            # with col_f1:
-            #     edad = st.number_input("Edad (Años)", min_value=18, max_value=90, value=24, step=1, key="prof_edad")
-            # with col_f2:
-            #     altura = st.number_input("Altura (Metros)", min_value=1.20, max_value=2.30, value=1.75, step=0.01, format="%.2f", key="prof_altura")
-            # with col_f3:
-            #     peso = st.number_input("Peso Actual (Kg)", min_value=40.0, max_value=150.0, value=74.0, step=0.1, format="%.1f", key="prof_peso")
+        continuar = st.button("Continuar", use_container_width=True, key="prof_step1_continue")
 
-            continuar = st.form_submit_button("Continuar", use_container_width=True)
-
-            if continuar:
-                if not nombre_completo.strip() or not telefono.strip() or not contrasena.strip():
-                    st.error("Por favor, llena los campos obligatorios.")
-                elif contrasena != confirmar_contrasena:
-                    st.error("Las contraseñas no coinciden.")
-                else:
-                    st.session_state.prof_reg_data = {
-                        "nombre": nombre_completo.strip(),
-                        "telefono": telefono.strip(),
-                        "password": contrasena,
-                        "departamento": depto_sel,
-                        "ciudad": barrio_sel,
-                        "genero": genero,
-                        # "edad": int(edad) if edad is not None else None,
-                        # "altura": float(altura) if altura is not None else None,
-                        # "peso": float(peso) if peso is not None else None,
-                    }
-                    st.session_state.prof_reg_step = 2
-                    st.rerun()
+        if continuar:
+            if not nombre_completo.strip() or not telefono.strip() or not contrasena.strip():
+                st.error("Por favor, llena los campos obligatorios.")
+            elif contrasena != confirmar_contrasena:
+                st.error("Las contraseñas no coinciden.")
+            else:
+                st.session_state.prof_reg_data = {
+                    "nombre": nombre_completo.strip(),
+                    "telefono": telefono.strip(),
+                    "password": contrasena,
+                    "departamento": depto_sel,
+                    "ciudad": barrio_sel,
+                    "genero": genero,
+                }
+                st.session_state.prof_reg_step = 2
+                st.rerun()
 
     if step == 2:
         col_back, _ = st.columns([0.2, 0.8])
@@ -235,8 +224,7 @@ def formulario_registro_profesional_ui():
                 cert_archivos.append((foto_bytes, foto_mime))
 
             if not cert_archivos:
-                st.error("Debes subir al menos una foto de tu diploma/certificado para continuar.")
-                st.stop()
+                st.warning("Puedes continuar sin subir diploma/certificado por ahora. Luego podrás cargarlo para verificar tu perfil.")
 
             try:
                 profesional_id = crear_profesional(
@@ -261,7 +249,7 @@ def formulario_registro_profesional_ui():
                     agregar_certificacion_profesional(int(profesional_id), None, foto_bytes, foto_mime)
                     certificados_guardados += 1
 
-                if certificados_guardados <= 0:
+                if cert_archivos and certificados_guardados <= 0:
                     from basededatos.manejarbasededatos import eliminar_profesional
 
                     eliminar_profesional(int(profesional_id))
@@ -290,28 +278,37 @@ def formulario_registro_cliente_ui():
     st.caption("Regístrate como cliente para buscar y contratar a los mejores profesionales.")
 
       # 2. Ahora sí abrimos el formulario para empaquetar el resto de los datos
-    with st.form("form_registro_largo_cliente"):
-        st.markdown("Datos de cuenta y contacto")
-        col_c1, col_c2 = st.columns(2)
-        
-        with col_c1:
-            nombre_completo = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez", key="cli_nombre")
-            depto_sel = st.selectbox(
-                "Departamento de residencia", 
-                list(DEPARTAMENTOS_COLOMBIA.keys()),
-                key="cli_depto"
-            )
-            patologia_familiar = st.selectbox(
-                "Patología Familiar", 
-                ["Si", "No"],
-                key="cli_patologia"
-            )
+    st.markdown("Datos de cuenta y contacto")
+    col_c1, col_c2 = st.columns(2)
 
-        with col_c2:
-            telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="cli_tel")
-            contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="cli_pass")
-            confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="cli_pass_conf")
-            genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="cli_genero")
+    with col_c1:
+        nombre_completo = st.text_input("Nombre completo", placeholder="Ej: Javid Martínez", key="cli_nombre")
+        depto_sel = st.selectbox(
+            "Departamento de residencia", 
+            list(DEPARTAMENTOS_COLOMBIA.keys()),
+            key="cli_depto"
+        )
+        ciudades = DEPARTAMENTOS_COLOMBIA.get(depto_sel, [])
+        if ciudades and st.session_state.get("cli_ciudad") not in ciudades:
+            st.session_state["cli_ciudad"] = ciudades[0]
+        ciudad_sel = st.selectbox(
+            "Barrio / Ciudad",
+            ciudades,
+            key="cli_ciudad",
+        )
+        patologia_familiar = st.selectbox(
+            "Patología Familiar", 
+            ["Si", "No"],
+            key="cli_patologia"
+        )
+
+    with col_c2:
+        telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="cli_tel")
+        contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="cli_pass")
+        confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="cli_pass_conf")
+        genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="cli_genero")
+
+    with st.form("form_registro_largo_cliente"):
 
         st.markdown("---")
         st.markdown("Datos básicos")
@@ -345,7 +342,7 @@ def formulario_registro_cliente_ui():
                             "telefono": telefono.strip(),
                             "password": contrasena,
                             "departamento": depto_sel,
-                            "ciudad": None,
+                            "ciudad": ciudad_sel,
                             "genero": genero,
                             "edad": int(edad) if edad is not None else None,
                             "altura": float(altura) if altura is not None else None,

@@ -23,9 +23,8 @@ def _procesar_login(telefono: str, password: str) -> bool:
 
             user = obtener_profesional_por_id(user_id)
             estado = (user or {}).get("estado_verificacion")
-            if (estado or "pendiente").strip().lower() != "verificado":
-                st.warning("Tu perfil profesional está en verificación.")
-                return True
+            verificado = (estado or "pendiente").strip().lower() == "verificado"
+
             token = crear_sesion(rol, user_id)
             st.session_state.auth_token = token
             st.session_state.logeado = True
@@ -34,8 +33,9 @@ def _procesar_login(telefono: str, password: str) -> bool:
             st.session_state.nombre_usuario = (user or {}).get("nombre")
             st.session_state.foto_usuario = (user or {}).get("foto")
             st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
+            st.session_state.prof_en_verificacion = not verificado
             st.session_state.pantalla = "login"
-            st.session_state.submenu_actual = "Inicio"
+            st.session_state.submenu_actual = "Inicio" if verificado else "perfil"
             st.rerun()
         else:
             from basededatos.manejarbasededatos import obtener_cliente_por_id

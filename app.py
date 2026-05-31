@@ -45,7 +45,7 @@ from basededatos.manejarbasededatos import (
     obtener_sesion,
     obtener_todos_los_profesionales,
 )
-from estilo.estilocss import css__styles 
+from estilo.estilocss import css__styles
 from interfaz_base import barra_navegacion_glass
 
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) 
@@ -167,18 +167,16 @@ if not st.session_state.logeado:
             if ses["rol"] == "profesional":
                 user = obtener_profesional_por_id(ses["user_id"])
                 estado = (user or {}).get("estado_verificacion")
-                if (estado or "pendiente").strip().lower() != "verificado":
-                    eliminar_sesion(str(token_q))
-                    _qp_set({"s": None})
-                    st.warning("Tu perfil profesional está en verificación.")
-                else:
-                    st.session_state.logeado = True
-                    st.session_state.rol = ses["rol"]
-                    st.session_state.usuario_id = int(ses["user_id"])
-                    st.session_state.nombre_usuario = (user or {}).get("nombre")
-                    st.session_state.foto_usuario = (user or {}).get("foto")
-                    st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
-                    st.session_state.auth_token = str(token_q)
+                st.session_state.logeado = True
+                st.session_state.rol = ses["rol"]
+                st.session_state.usuario_id = int(ses["user_id"])
+                st.session_state.nombre_usuario = (user or {}).get("nombre")
+                st.session_state.foto_usuario = (user or {}).get("foto")
+                st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
+                st.session_state.auth_token = str(token_q)
+                st.session_state.prof_en_verificacion = (
+                    (estado or "pendiente").strip().lower() != "verificado"
+                )
             else:
                 user = obtener_cliente_por_id(ses["user_id"])
                 st.session_state.logeado = True
@@ -219,7 +217,8 @@ if st.session_state.logeado:
         and rol == "cliente"
         and st.session_state.get("selected_profesional_id") is not None
     )
-    if not en_detalle_prof:
+    ocultar_nav = en_detalle_prof or (vista == "perfil" and rol == "profesional")
+    if not ocultar_nav:
         barra_navegacion_glass()
 
     if vista == "Inicio":
@@ -453,16 +452,20 @@ if st.session_state.logeado:
         elif rol == "profesional":
             profesional = obtener_profesional_por_id(usuario_id)
             if profesional:
-                perfil_profesional_view(profesional)
+                perfil_profesional_view(profesional, editable=True)
 
         st.markdown("---")
         with st.expander("Actualizar foto de perfil", expanded=False):
-            tab1, tab2 = st.tabs(["Tomar foto", "Subir foto"])
+            tab1 = st.tabs(["Subir foto"])[0]
             foto_file = None
-            with tab1: foto_file = st.camera_input("Tomar foto", key="ajustes_foto_camera")
-            with tab2:
-                up = st.file_uploader("Subir foto", type=["png", "jpg", "jpeg", "webp"], key="ajustes_foto_upload")
-                if up is not None: foto_file = up
+            with tab1:
+                up = st.file_uploader(
+                    "Subir foto",
+                    type=["png", "jpg", "jpeg", "webp"],
+                    key="ajustes_foto_upload",
+                )
+                if up is not None:
+                    foto_file = up
 
             if st.button("Guardar foto", use_container_width=True, disabled=(foto_file is None)):
                 foto_bytes = foto_file.getvalue()
@@ -531,23 +534,15 @@ else:
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("Omitir por ahora", use_container_width=True):
+                token = crear_sesion(str(rol), int(usuario_id))
+                st.session_state.auth_token = token
+                _qp_set({"s": token, "tab": "perfil"})
+                st.session_state.logeado = True
+                st.session_state.pantalla = "login"
+                st.session_state.submenu_actual = "perfil"
                 if rol == "profesional":
-                    st.session_state.logeado = False
-                    st.session_state.pantalla = "login"
-                    st.session_state.rol = None
-                    st.session_state.usuario_id = None
-                    st.session_state.nombre_usuario = None
-                    st.success(
-                        "Perfil creado. Tu perfil quedó en verificación; cuando sea aprobado podrás iniciar sesión."
-                    )
-                    st.rerun()
-                else:
-                    token = crear_sesion(str(rol), int(usuario_id))
-                    st.session_state.auth_token = token
-                    _qp_set({"s": token, "tab": _qp_get("tab") or "Inicio"})
-                    st.session_state.logeado = True
-                    st.session_state.pantalla = "login"
-                    st.rerun()
+                    st.session_state.prof_en_verificacion = True
+                st.rerun()
         with col_b:
             if st.button("Guardar y Continuar", use_container_width=True, disabled=(foto_file is None)):
                 foto_bytes = foto_file.getvalue() if foto_file is not None else None
@@ -557,20 +552,13 @@ else:
                         guardar_foto_profesional(int(usuario_id), foto_bytes, foto_mime)
                     else:
                         guardar_foto_cliente(int(usuario_id), foto_bytes, foto_mime)
+
+                token = crear_sesion(str(rol), int(usuario_id))
+                st.session_state.auth_token = token
+                _qp_set({"s": token, "tab": "perfil"})
+                st.session_state.logeado = True
+                st.session_state.pantalla = "login"
+                st.session_state.submenu_actual = "perfil"
                 if rol == "profesional":
-                    st.session_state.logeado = False
-                    st.session_state.pantalla = "login"
-                    st.session_state.rol = None
-                    st.session_state.usuario_id = None
-                    st.session_state.nombre_usuario = None
-                    st.success(
-                        "Foto guardada. Tu perfil quedó en verificación; cuando sea aprobado podrás iniciar sesión."
-                    )
-                    st.rerun()
-                else:
-                    token = crear_sesion(str(rol), int(usuario_id))
-                    st.session_state.auth_token = token
-                    _qp_set({"s": token, "tab": _qp_get("tab") or "Inicio"})
-                    st.session_state.logeado = True
-                    st.session_state.pantalla = "login"
-                    st.rerun()
+                    st.session_state.prof_en_verificacion = True
+                st.rerun()

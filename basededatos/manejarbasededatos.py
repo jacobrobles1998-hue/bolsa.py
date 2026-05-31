@@ -715,6 +715,53 @@ def obtener_profesional_por_id(profesional_id: int):
     conn.close()
     return dict(row) if row else None
 
+
+def actualizar_profesional(profesional_id: int, cambios: dict) -> bool:
+    if not cambios:
+        return False
+
+    allowed = {
+        "nombre",
+        "telefono",
+        "departamento",
+        "ciudad",
+        "genero",
+        "especialidad",
+        "universidad",
+        "experiencia",
+        "tarifa",
+        "tarifa_unidad",
+        "metodologia",
+    }
+
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(profesionales)")
+    cols = {r[1] for r in cursor.fetchall()}
+
+    update_items = []
+    params = []
+    for k, v in (cambios or {}).items():
+        if k not in allowed:
+            continue
+        if k not in cols:
+            continue
+        update_items.append(f"{k} = ?")
+        params.append(v)
+
+    if not update_items:
+        conn.close()
+        return False
+
+    params.append(int(profesional_id))
+    cursor.execute(
+        f"UPDATE profesionales SET {', '.join(update_items)} WHERE id = ?",
+        tuple(params),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
 def obtener_cliente_por_id(cliente_id: int):
     conn = conectar_db()
     cursor = conn.cursor()
