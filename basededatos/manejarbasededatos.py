@@ -57,6 +57,10 @@ def _asegurar_schema(conn: sqlite3.Connection):
                 experiencia INTEGER,
                 tarifa REAL,
                 metodologia TEXT,
+                url_tiktok TEXT,
+                url_instagram TEXT,
+                url_facebook TEXT,
+                url_youtube TEXT,
                 estado_verificacion TEXT,
                 created_at TEXT NOT NULL
             )
@@ -149,6 +153,10 @@ def _asegurar_schema(conn: sqlite3.Connection):
                 ("experiencia", "INTEGER"),
                 ("tarifa", "REAL"),
                 ("metodologia", "TEXT"),
+                ("url_tiktok", "TEXT"),
+                ("url_instagram", "TEXT"),
+                ("url_facebook", "TEXT"),
+                ("url_youtube", "TEXT"),
                 ("estado_verificacion", "TEXT"),
                 ("created_at", "TEXT"),
             ],
@@ -380,6 +388,10 @@ def crear_tablas_iniciales():
             experiencia INTEGER,
             tarifa REAL,
             metodologia TEXT,
+            url_tiktok TEXT,
+            url_instagram TEXT,
+            url_facebook TEXT,
+            url_youtube TEXT,
             estado_verificacion TEXT,
             created_at TEXT NOT NULL
         )
@@ -467,6 +479,10 @@ def crear_tablas_iniciales():
             ("experiencia", "INTEGER"),
             ("tarifa", "REAL"),
             ("metodologia", "TEXT"),
+            ("url_tiktok", "TEXT"),
+            ("url_instagram", "TEXT"),
+            ("url_facebook", "TEXT"),
+            ("url_youtube", "TEXT"),
             ("estado_verificacion", "TEXT"),
             ("created_at", "TEXT"),
         ],
@@ -564,7 +580,7 @@ def crear_profesional(datos: dict) -> int:
         """,
         (
             datos.get("nombre"),
-            f"prof_{secrets.token_hex(8)}@axon.local",
+            (datos.get("email") or "").strip().lower() or f"prof_{secrets.token_hex(8)}@axon.local",
             datos.get("telefono"),
             hash_password(datos.get("password") or ""),
             None,
@@ -602,7 +618,7 @@ def crear_cliente(datos: dict) -> int:
         """,
         (
             datos.get("nombre"),
-            f"cli_{secrets.token_hex(8)}@axon.local",
+            (datos.get("email") or "").strip().lower() or f"cli_{secrets.token_hex(8)}@axon.local",
             datos.get("telefono"),
             hash_password(datos.get("password") or ""),
             None,
@@ -623,13 +639,13 @@ def crear_cliente(datos: dict) -> int:
     conn.close()
     return cliente_id
 
-def autenticar_usuario(telefono: str, password: str):
-    telefono = (telefono or "").strip()
-    if not telefono or not password:
+def autenticar_usuario(email: str, password: str):
+    email = (email or "").strip().lower()
+    if not email or not password:
         return None
     conn = conectar_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM profesionales WHERE telefono = ?", (telefono,))
+    cursor.execute("SELECT * FROM profesionales WHERE lower(email) = ?", (email,))
     row = cursor.fetchone()
     if row and verify_password(password, row["password_hash"]):
         try:
@@ -644,7 +660,7 @@ def autenticar_usuario(telefono: str, password: str):
             "estado_verificacion": estado_verificacion,
         }
 
-    cursor.execute("SELECT * FROM clientes WHERE telefono = ?", (telefono,))
+    cursor.execute("SELECT * FROM clientes WHERE lower(email) = ?", (email,))
     row = cursor.fetchone()
     conn.close()
     if row and verify_password(password, row["password_hash"]):
@@ -725,6 +741,7 @@ def actualizar_profesional(profesional_id: int, cambios: dict) -> bool:
         "telefono",
         "departamento",
         "ciudad",
+        "correo",
         "genero",
         "especialidad",
         "universidad",
@@ -732,6 +749,10 @@ def actualizar_profesional(profesional_id: int, cambios: dict) -> bool:
         "tarifa",
         "tarifa_unidad",
         "metodologia",
+        "url_tiktok",
+        "url_instagram",
+        "url_facebook",
+        "url_youtube",
     }
 
     conn = conectar_db()
@@ -997,19 +1018,66 @@ def listar_clientes_de_profesional(id_profesional: int):
     conn.close()
     return [dict(r) for r in rows]
 
-def obtener_todos_los_profesionales():
-    """Profesionales verificados visibles en el directorio de Inicio."""
+
+def listar_profesionales_de_cliente(id_cliente: int):
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT p.*, ct.id AS contrato_id, ct.monto, ct.fecha, ct.estado
+        FROM contratos ct
+        JOIN profesionales p ON p.id = ct.id_profesional
+        WHERE ct.id_cliente = ? AND ct.estado = 'activo'
+        ORDER BY ct.fecha DESC
+        """,
+        (int(id_cliente),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def listar_profesionales_de_cliente(id_cliente: int):
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT p.*, ct.id AS contrato_id, ct.monto, ct.fecha, ct.estado
+        FROM contratos ct
+        JOIN profesionales p ON p.id = ct.id_profesional
+        WHERE ct.id_cliente = ? AND ct.estado = 'activo'
+        ORDER BY ct.fecha DESC
+        """,
+        (int(id_cliente),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def obtener_todos_los_profesionales(*, solo_verificados: bool = True):
+    """Profesionales visibles en el directorio de Inicio."""
     conn = conectar_db()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT id, nombre, especialidad, departamento, ciudad, tarifa, metodologia, experiencia
-            FROM profesionales
-            WHERE lower(COALESCE(estado_verificacion, 'pendiente')) = 'verificado'
-            ORDER BY created_at DESC
-            """
-        )
+        if solo_verificados:
+            cursor.execute(
+                """
+                SELECT id, nombre, especialidad, departamento, ciudad, tarifa, metodologia, experiencia,
+                       telefono, foto, foto_mime, estado_verificacion
+                FROM profesionales
+                WHERE lower(COALESCE(estado_verificacion, 'pendiente')) = 'verificado'
+                ORDER BY created_at DESC
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, nombre, especialidad, departamento, ciudad, tarifa, metodologia, experiencia,
+                       telefono, foto, foto_mime, estado_verificacion
+                FROM profesionales
+                ORDER BY created_at DESC
+                """
+            )
         return [dict(r) for r in cursor.fetchall()]
     except Exception as e:
         print(f"Error en obtener_todos_los_profesionales: {e}")

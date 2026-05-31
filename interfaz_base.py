@@ -54,7 +54,7 @@ def barra_navegacion_glass():
             background: #2D3139 !important;
         }
 
-        /* Pestaña seleccionada con resplandor (Progreso / Configuración) */
+        /* Pestaña seleccionada con resplandor (Mensajes / Contratos) */
         .active-glow > div > button {
             background: #F8FAFC !important;
             color: #0F172A !important;
@@ -213,23 +213,23 @@ def barra_navegacion_glass():
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botón 2: Progreso (Activa el brillo ámbar inferior al ser seleccionado)
+        # Botón 2: Mensajes (Activa el brillo ámbar inferior al ser seleccionado)
         with col_2:
-            is_active = "active-glow" if st.session_state.submenu_actual == "Progreso" else ""
+            is_active = "active-glow" if st.session_state.submenu_actual == "Mensajes" else ""
             st.markdown(f'<div class="{is_active}">', unsafe_allow_html=True)
-            if st.button("Progreso", key="nav_p_progreso", use_container_width=True):
-                st.session_state.submenu_actual = "Progreso"
-                _qp_set({"tab": "Progreso"})
+            if st.button("Mensajes", key="nav_p_mensajes", use_container_width=True):
+                st.session_state.submenu_actual = "Mensajes"
+                _qp_set({"tab": "Mensajes"})
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botón 3: Ajustes
+        # Botón 3: Contratos
         with col_3:
-            is_active = "active-glow" if st.session_state.submenu_actual == "Configuracion" else ""
+            is_active = "active-glow" if st.session_state.submenu_actual == "Contratos" else ""
             st.markdown(f'<div class="{is_active}">', unsafe_allow_html=True)
-            if st.button("Configuración", key="nav_p_config", use_container_width=True):
-                st.session_state.submenu_actual = "Configuracion"
-                _qp_set({"tab": "Configuracion"})
+            if st.button("Contratos", key="nav_p_contratos", use_container_width=True):
+                st.session_state.submenu_actual = "Contratos"
+                _qp_set({"tab": "Contratos"})
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 

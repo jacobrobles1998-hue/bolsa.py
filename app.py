@@ -63,17 +63,6 @@ def _img_src(foto_bytes, mime: str | None):
     except Exception:
         return "https://via.placeholder.com/96"
 
-def _wa_url(telefono) -> str | None:
-    digits = "".join(ch for ch in str(telefono or "") if ch.isdigit())
-    if not digits:
-        return None
-    if digits.startswith("57"):
-        num = digits
-    elif len(digits) == 10:
-        num = "57" + digits
-    else:
-        num = digits
-    return f"https://wa.me/{num}"
 
 def _href_inicio_prof(prof_id: int, token: str | None, q_buscar: str | None):
     parts = []
@@ -138,11 +127,7 @@ if "db_inicializada" not in st.session_state:
         st.error(f"Error al inicializar la base de datos: {e}")
 
 if "demo_prof_ready" not in st.session_state:
-    try:
-        asegurar_profesional_demo()
-        st.session_state.demo_prof_ready = True
-    except Exception:
-        st.session_state.demo_prof_ready = False
+    st.session_state.demo_prof_ready = False
 
 # INICIALIZACIÓN COMPLETA DEL STATE
 if "pantalla" not in st.session_state: st.session_state.pantalla = "login"  
@@ -153,7 +138,12 @@ if "submenu_actual" not in st.session_state: st.session_state.submenu_actual = "
 if "selected_profesional_id" not in st.session_state: st.session_state.selected_profesional_id = None
 
 tab_q = _qp_get("tab")
-if tab_q in {"Inicio", "Progreso", "Configuracion", "perfil"}: st.session_state.submenu_actual = tab_q
+if tab_q == "Progreso":
+    tab_q = "Mensajes"
+elif tab_q == "Configuracion":
+    tab_q = "Contratos"
+if tab_q in {"Inicio", "Mensajes", "Contratos", "perfil"}:
+    st.session_state.submenu_actual = tab_q
 
 prof_q = _qp_get("prof")
 if prof_q and str(prof_q).isdigit(): st.session_state.selected_profesional_id = int(prof_q)
@@ -236,14 +226,20 @@ if st.session_state.logeado:
 
                     st.write("---")
                     perfil_profesional_view(profesional)
-                    tarifa = profesional.get("tarifa")
-                    monto = float(tarifa) if tarifa is not None else None
-                    if st.button("Contratar a este profesional", use_container_width=True, key="contratar_prof_detalle"):
-                        crear_contrato(id_cliente=int(usuario_id), id_profesional=int(profesional_id), monto=monto)
-                        st.session_state.selected_profesional_id = None
-                        _qp_set({"prof": None, "tab": "Inicio"})
-                        st.success("¡Contrato solicitado de manera exitosa!")
-                        st.rerun()
+
+                    col_c1, col_c2 = st.columns([1.4, 1])
+                    with col_c1:
+                        if st.button("Contacta al profesional aquí", use_container_width=True, key="contactar_prof_detalle"):
+                            st.session_state.selected_profesional_id = int(profesional_id)
+                            st.session_state.submenu_actual = "Mensajes"
+                            _qp_set({"tab": "Mensajes", "prof": int(profesional_id)})
+                            st.rerun()
+                    with col_c2:
+                        if st.button("Ver contratos", use_container_width=True, key="ver_contratos_desde_detalle"):
+                            st.session_state.submenu_actual = "Contratos"
+                            _qp_set({"tab": "Contratos"})
+                            st.rerun()
+
                     st.stop()
 
             st.markdown(
@@ -251,30 +247,28 @@ if st.session_state.logeado:
                 unsafe_allow_html=True,
             )
             st.caption(
-                "Aquí solo verás perfiles de profesionales verificados que ofrecen sus servicios "
-                "(entrenamiento, nutrición, fisioterapia, etc.). Usa el buscador de arriba para filtrar."
+                "Aquí verás los perfiles de profesionales creados. "
+                "Los que estén en verificación aparecerán marcados como 'En verificación'."
             )
             
             q_buscar = (_qp_get("q") or st.session_state.get("nav_search") or "").strip()
             try:
                 if q_buscar:
-                    todos_los_profesionales = buscar_profesionales(texto=q_buscar)
+                    todos_los_profesionales = buscar_profesionales(texto=q_buscar, solo_verificados=False)
                 else:
-                    todos_los_profesionales = obtener_todos_los_profesionales()
+                    todos_los_profesionales = obtener_todos_los_profesionales(solo_verificados=False)
             except Exception:
                 todos_los_profesionales = []
 
             profs = []
             for p in (todos_los_profesionales or []):
-                estado = (p.get("estado_verificacion") or "").strip().lower()
-                if estado and estado != "verificado":
+                nombre_p = (p.get("nombre") or "").strip().lower()
+                if nombre_p == "andres torres":
                     continue
+
                 if p.get("id") is None:
                     continue
                 profs.append(p)
-
-            if not q_buscar:
-                profs = profs[:1]
 
             if profs:
                 random.shuffle(profs)
@@ -301,14 +295,11 @@ if st.session_state.logeado:
                         .axon-tag{display:inline-flex;align-items:center;gap:8px}
                         .axon-prof-right{display:flex;flex-direction:column;gap:10px;align-items:flex-end;justify-content:center}
                         .axon-price{color:#0B1220;font-weight:800;font-size:14px;text-align:right}
-                        .axon-wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#0EA5A4;color:#fff;text-decoration:none;border-radius:16px;padding:12px 14px;font-weight:800;font-size:13px;box-shadow:0 10px 22px rgba(14,165,164,.32);width:100%}
-                        .axon-wa:hover{filter:brightness(.98)}
                         .axon-card-ghost{opacity:.9}
                         @media (max-width: 900px){
                             .axon-prof-carousel{height:640px}
                             .axon-prof-card{grid-template-columns:78px 1fr;grid-template-rows:auto auto}
                             .axon-prof-right{grid-column:1 / -1;flex-direction:row;justify-content:space-between;align-items:center}
-                            .axon-wa{width:auto}
                         }
                     </style>
                     """,
@@ -351,13 +342,9 @@ if st.session_state.logeado:
                     icono = _icono_especialidad(str(esp))
                     foto_src = _img_src(prof.get("foto"), prof.get("foto_mime"))
                     href = _href_inicio_prof(pid, token_sesion, q_buscar)
-                    wa = _wa_url(prof.get("telefono"))
-                    wa_html = (
-                        f"<a class='axon-wa' href='{_h(wa)}' target='_blank' rel='noopener'>CONTACTAR POR WHATSAPP</a>"
-                        if wa
-                        else "<div class='axon-wa axon-card-ghost'>CONTACTAR</div>"
-                    )
-                    meta_badge = "✅ Verificado"
+
+                    estado = (prof.get("estado_verificacion") or "pendiente").strip().lower()
+                    meta_badge = "✅ Verificado" if estado == "verificado" else "⏳ En verificación"
                     card_class = "axon-prof-card"
                     cards.append(
                         f"""
@@ -381,7 +368,6 @@ if st.session_state.logeado:
                             </div>
                             <div class="axon-prof-right">
                                 <div class="axon-price">💰 { _h(tarifa_text) }</div>
-                                {wa_html}
                             </div>
                         </div>
                         """
@@ -422,6 +408,14 @@ if st.session_state.logeado:
         elif rol == "profesional":
             st.title("Panel de Control Profesional")
             st.write(f"Bienvenido de nuevo, {nombre_usuario}")
+
+            col_go_profile, col_spacer = st.columns([1, 3])
+            with col_go_profile:
+                if st.button("Ver mi perfil", use_container_width=True, key="pro_ir_mi_perfil"):
+                    st.session_state.submenu_actual = "perfil"
+                    _qp_set({"tab": "perfil"})
+                    st.rerun()
+
             clientes = listar_clientes_de_profesional(int(usuario_id))
             if not clientes:
                 st.info("Todavía no tienes clientes vinculados activos.")
@@ -433,22 +427,102 @@ if st.session_state.logeado:
                         if c.get("telefono"): st.write(f"📞 Teléfono: {c.get('telefono')}")
                         st.markdown("---")
         
+    elif vista == "Mensajes":
+        st.markdown("<h2 style='color:white;'>Mensajes</h2>", unsafe_allow_html=True)
+
+        if rol == "cliente":
+            pid = st.session_state.get("selected_profesional_id")
+            if not pid:
+                st.info("Selecciona un profesional en Inicio y pulsa 'Contacta al profesional aquí'.")
+            else:
+                profesional = obtener_profesional_por_id(int(pid))
+                if not profesional:
+                    st.info("No se encontró el profesional.")
+                else:
+                    st.markdown(f"### {profesional.get('nombre') or 'Profesional'}")
+                    st.caption("Aquí irá el chat. Por ahora puedes contratar desde aquí.")
+
+                    tarifa = profesional.get("tarifa")
+                    monto = float(tarifa) if tarifa is not None else None
+                    if st.button("Contratar a este profesional", use_container_width=True, key="contratar_prof_mensajes"):
+                        crear_contrato(id_cliente=int(usuario_id), id_profesional=int(pid), monto=monto)
+                        st.session_state.submenu_actual = "Contratos"
+                        _qp_set({"tab": "Contratos"})
+                        st.success("¡Contrato solicitado de manera exitosa!")
+                        st.rerun()
+        else:
+            st.info("Aquí irán tus mensajes con tus clientes. (Pendiente)")
+
+    elif vista == "Contratos":
+        st.markdown("<h2 style='color:white;'>Contratos</h2>", unsafe_allow_html=True)
+
+        if rol == "profesional":
+            contratos = listar_clientes_de_profesional(int(usuario_id))
+            if not contratos:
+                st.info("Aún no tienes contratos activos.")
+            else:
+                for c in contratos:
+                    with st.container():
+                        st.markdown(f"#### {c.get('nombre', 'Cliente')}")
+                        monto = c.get("monto")
+                        fecha = c.get("fecha")
+                        if monto is not None:
+                            st.write(f"Monto: {monto}")
+                        if fecha:
+                            st.write(f"Fecha: {fecha}")
+                        st.markdown("---")
+        else:
+            from basededatos.manejarbasededatos import listar_profesionales_de_cliente
+
+            contratos = listar_profesionales_de_cliente(int(usuario_id))
+            if not contratos:
+                st.info("Aún no tienes contratos activos.")
+            else:
+                for p in contratos:
+                    with st.container():
+                        st.markdown(f"#### {p.get('nombre', 'Profesional')}")
+                        esp = p.get("especialidad")
+                        if esp:
+                            st.write(f"Especialidad: {esp}")
+                        monto = p.get("monto")
+                        fecha = p.get("fecha")
+                        if monto is not None:
+                            st.write(f"Monto: {monto}")
+                        if fecha:
+                            st.write(f"Fecha: {fecha}")
+                        st.markdown("---")
+
     elif vista == "perfil":
         st.markdown("<h2 style='color:white;'>Mi perfil</h2>", unsafe_allow_html=True)
         st.caption("Toca tu foto en la barra superior para volver aquí. Aquí ves todo lo que registraste.")
 
+        with st.expander("Cuenta activa", expanded=False):
+            st.write(f"Rol: {rol}")
+            st.write(f"ID: {usuario_id}")
+            st.write(f"Nombre: {nombre_usuario}")
+            token_dbg = st.session_state.get("auth_token") or _qp_get("s")
+            if token_dbg:
+                st.write(f"Sesión: {token_dbg}")
+            user_dbg = None
+            if rol == "cliente":
+                user_dbg = obtener_cliente_por_id(int(usuario_id))
+            elif rol == "profesional":
+                user_dbg = obtener_profesional_por_id(int(usuario_id))
+            if user_dbg and user_dbg.get("email"):
+                st.write(f"Email: {user_dbg.get('email')}")
+
         if rol == "cliente":
             cliente = obtener_cliente_por_id(usuario_id)
             if cliente:
-                col_avatar, col_form = st.columns([1, 2])
-                with col_avatar:
-                    foto = cliente.get("foto") or st.session_state.get("foto_usuario")
-                    if foto:
-                        st.image(foto, caption=nombre_usuario or "Tu foto", width=200)
-                    else:
-                        st.info("Sin foto aún. Puedes agregarla abajo.")
-                with col_form:
-                    perfil_cliente_view(cliente, mostrar_foto=False)
+                foto_ss = st.session_state.get("foto_usuario")
+                mime_ss = st.session_state.get("foto_usuario_mime")
+                if (not cliente.get("foto")) and foto_ss:
+                    cliente = dict(cliente)
+                    cliente["foto"] = foto_ss
+                    if mime_ss and not cliente.get("foto_mime"):
+                        cliente["foto_mime"] = mime_ss
+
+                perfil_cliente_view(cliente, mostrar_foto=True)
         elif rol == "profesional":
             profesional = obtener_profesional_por_id(usuario_id)
             if profesional:

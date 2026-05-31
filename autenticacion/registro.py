@@ -24,7 +24,7 @@ def formulario_registro_profesional_ui():
     step = int(st.session_state.prof_reg_step)
 
     if step == 1:
-        st.markdown("Datos de cuenta y contacto")
+        st.markdown("Datos de cuenta ")
         col_c1, col_c2 = st.columns(2)
 
         with col_c1:
@@ -44,10 +44,9 @@ def formulario_registro_profesional_ui():
             )
 
         with col_c2:
-            telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="prof_tel")
+            correo = st.text_input("Correo electrónico", placeholder="Ej: javidmartinez@example.com", key="prof_correo")
             contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="prof_pass")
             confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="prof_pass_conf")
-
         st.markdown("---")
         st.markdown("Información personal")
         genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="prof_genero")
@@ -55,14 +54,14 @@ def formulario_registro_profesional_ui():
         continuar = st.button("Continuar", use_container_width=True, key="prof_step1_continue")
 
         if continuar:
-            if not nombre_completo.strip() or not telefono.strip() or not contrasena.strip():
+            if not nombre_completo.strip() or not correo.strip() or not contrasena.strip():
                 st.error("Por favor, llena los campos obligatorios.")
             elif contrasena != confirmar_contrasena:
                 st.error("Las contraseñas no coinciden.")
             else:
                 st.session_state.prof_reg_data = {
                     "nombre": nombre_completo.strip(),
-                    "telefono": telefono.strip(),
+                    "email": correo.strip().lower(),
                     "password": contrasena,
                     "departamento": depto_sel,
                     "ciudad": barrio_sel,
@@ -208,7 +207,7 @@ def formulario_registro_profesional_ui():
 
         if crear:
             data = dict(st.session_state.prof_reg_data or {})
-            if not data.get("nombre") or not data.get("telefono") or not data.get("password"):
+            if not data.get("nombre") or not data.get("email") or not data.get("password"):
                 st.session_state.prof_reg_step = 1
                 st.rerun()
 
@@ -264,7 +263,7 @@ def formulario_registro_profesional_ui():
                 st.session_state.rol = "profesional"
                 st.session_state.usuario_id = profesional_id
                 st.session_state.nombre_usuario = data.get("nombre")
-                st.session_state.email_usuario = None
+                st.session_state.email_usuario = data.get("email")
                 st.success(f"💪 ¡Perfil de {data.get('nombre')} creado con éxito!")
                 st.rerun()
 
@@ -303,10 +302,10 @@ def formulario_registro_cliente_ui():
         )
 
     with col_c2:
-        telefono = st.text_input("Teléfono", placeholder="Ej: 3101234567", key="cli_tel")
-        contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="cli_pass")
-        confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="cli_pass_conf")
-        genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="cli_genero")
+            correo = st.text_input("Correo electrónico", placeholder="Ej: nombre@correo.com", key="cli_correo")
+            contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="cli_pass")
+            confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="cli_pass_conf")
+            genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="cli_genero")
 
     with st.form("form_registro_largo_cliente"):
 
@@ -330,7 +329,7 @@ def formulario_registro_cliente_ui():
         boton_enviar_cli = st.form_submit_button("Crear Perfil Cliente", use_container_width=True)
         
         if boton_enviar_cli:
-            if not nombre_completo.strip() or not telefono.strip() or not contrasena.strip():
+            if not nombre_completo.strip() or not correo.strip() or not contrasena.strip():
                 st.error("Por favor, llena los campos obligatorios del cliente.")
             elif contrasena != confirmar_contrasena:
                 st.error("Las contraseñas no coinciden.")
@@ -339,7 +338,7 @@ def formulario_registro_cliente_ui():
                     cliente_id = crear_cliente(
                         {
                             "nombre": nombre_completo.strip(),
-                            "telefono": telefono.strip(),
+                            "email": correo.strip().lower(),
                             "password": contrasena,
                             "departamento": depto_sel,
                             "ciudad": ciudad_sel,
@@ -361,7 +360,7 @@ def formulario_registro_cliente_ui():
                     st.session_state.rol = "cliente"
                     st.session_state.usuario_id = cliente_id
                     st.session_state.nombre_usuario = nombre_completo.strip()
-                    st.session_state.email_usuario = None
+                    st.session_state.email_usuario = correo.strip().lower()
                     st.success(f"¡Perfil de {nombre_completo} creado con éxito!")
                     st.rerun()
 

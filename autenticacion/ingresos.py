@@ -12,9 +12,9 @@ def _leer_estilo_archivo(nombre_archivo: str) -> str:
         return ""
 
 
-def _procesar_login(telefono: str, password: str) -> bool:
-    telefono = (telefono or "").strip()
-    resultado = autenticar_usuario(telefono, password or "")
+def _procesar_login(correo: str, password: str) -> bool:
+    correo = (correo or "").strip().lower()
+    resultado = autenticar_usuario(correo, password or "")
     if resultado:
         rol = resultado["rol"]
         user_id = int(resultado["id"])
@@ -53,11 +53,11 @@ def _procesar_login(telefono: str, password: str) -> bool:
             st.session_state.submenu_actual = "Inicio"
             st.rerun()
 
-    if telefono.lower() == "test@test.com" and password == "1234":
+    if correo.lower() == "test@test.com" and password == "1234":
         st.session_state.logeado = True
         st.session_state.pantalla = "login"
         st.session_state.rol = st.session_state.get("rol") or "cliente"
-        st.session_state.nombre_usuario = telefono.split("@", 1)[0] if "@" in telefono else telefono
+        st.session_state.nombre_usuario = correo.split("@", 1)[0] if "@" in correo else correo
         st.rerun()
 
     st.error("Usuario o contraseña incorrectos")
@@ -77,10 +77,10 @@ def mostrar_interfaz_login():
         panel_html = _leer_estilo_archivo("panel.html")
         if panel_html:
             st.markdown(panel_html, unsafe_allow_html=True)
-        telefono = st.text_input(
-            "Teléfono",
+        correo = st.text_input(
+            "Correo electrónico",
             key="login_email",
-            placeholder="username",
+            placeholder="correo@ejemplo.com",
             label_visibility="collapsed",
         )
         password = st.text_input(
@@ -93,7 +93,7 @@ def mostrar_interfaz_login():
         submitted = st.form_submit_button("Login", use_container_width=True, key="login_submit")
 
     if submitted:
-        _procesar_login(telefono, password)
+        _procesar_login(correo, password)
 
     st.markdown('<div class="axon-registro-zone">', unsafe_allow_html=True)
     col_reg_1, col_reg_2 = st.columns(2)

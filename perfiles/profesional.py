@@ -1,13 +1,139 @@
 import base64
 import html
+import re
+from urllib.parse import quote, urlparse, parse_qs
 
 import streamlit as st
+import streamlit.components.v1 as components
 from basededatos.manejarbasededatos import (
     DEPARTAMENTOS_COLOMBIA,
     actualizar_profesional,
     guardar_foto_profesional,
     listar_certificaciones_profesional,
 )
+
+
+def _h(value) -> str:
+    return html.escape("" if value is None else str(value))
+
+
+def _responsive_iframe(src: str, *, title: str = "Multimedia", aspect_ratio: float = 9 / 16):
+    src_safe = html.escape(src or "")
+    title_safe = html.escape(title or "Multimedia")
+    ratio = max(0.35, min(0.8, float(aspect_ratio)))
+    pad = ratio * 100.0
+    return f"""
+    <style>
+    .synapse-embed-wrap{{
+        width: 100%;
+        max-width: 760px;
+        margin: 12px auto 0;
+        border-radius: 18px;
+        overflow: hidden;
+        background: #0B1220;
+        box-shadow: 0 16px 40px rgba(15,23,42,.12);
+        border: 1px solid rgba(255,255,255,.08);
+    }}
+    .synapse-embed{{
+        position: relative;
+        width: 100%;
+        padding-top: {pad:.4f}%;
+        background: #0B1220;
+    }}
+    .synapse-embed iframe{{
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+    }}
+    </style>
+    <div class="synapse-embed-wrap">
+        <div class="synapse-embed">
+            <iframe
+                src="{src_safe}"
+                title="{title_safe}"
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+            ></iframe>
+        </div>
+    </div>
+    """
+
+
+def _extract_tiktok_id(url: str) -> str | None:
+    m = re.search(r"/video/(\d+)", url)
+    return m.group(1) if m else None
+
+
+def _extract_instagram_code(url: str) -> tuple[str, str] | None:
+    m = re.search(r"instagram\.com/(p|reel|tv)/([^/?#]+)/?", url)
+    if not m:
+        return None
+    return m.group(1), m.group(2)
+
+
+def _extract_youtube_id(url: str) -> str | None:
+    u = urlparse(url)
+    host = (u.netloc or "").lower()
+    path = (u.path or "").strip("/")
+
+    if "youtu.be" in host:
+        return path.split("/")[0] if path else None
+
+    if "youtube.com" in host:
+        if path.startswith("shorts/"):
+            parts = path.split("/")
+            return parts[1] if len(parts) > 1 else None
+        if path.startswith("watch"):
+            q = parse_qs(u.query or "")
+            v = q.get("v")
+            return v[0] if v else None
+        if path.startswith("embed/"):
+            parts = path.split("/")
+            return parts[1] if len(parts) > 1 else None
+
+    return None
+
+
+def _multimedia_embed_html(url: str):
+    raw = (url or "").strip()
+    if not raw:
+        return None
+
+    u = urlparse(raw)
+    host = (u.netloc or "").lower()
+    full = raw
+
+    if "tiktok.com" in host:
+        vid = _extract_tiktok_id(full)
+        if not vid:
+            return None
+        src = f"https://www.tiktok.com/embed/v2/{vid}"
+        return _responsive_iframe(src, title="TikTok", aspect_ratio=9 / 16)
+
+    if "instagram.com" in host:
+        code = _extract_instagram_code(full)
+        if not code:
+            return None
+        kind, shortcode = code
+        src = f"https://www.instagram.com/{kind}/{shortcode}/embed"
+        return _responsive_iframe(src, title="Instagram", aspect_ratio=1)
+
+    if "facebook.com" in host or "fb.watch" in host:
+        src = f"https://www.facebook.com/plugins/video.php?href={quote(full, safe='')}&show_text=false"
+        return _responsive_iframe(src, title="Facebook", aspect_ratio=9 / 16)
+
+    if "youtube.com" in host or "youtu.be" in host:
+        vid = _extract_youtube_id(full)
+        if not vid:
+            return None
+        src = f"https://www.youtube.com/embed/{quote(vid)}"
+        return _responsive_iframe(src, title="YouTube", aspect_ratio=9 / 16)
+
+    return None
 
 
 def _avatar_profesional(nombre: str, foto, mime: str | None, *, size_px: int = 140, verificado: bool = False):
@@ -334,7 +460,11 @@ def perfil_profesional_view(datos, *, editable: bool = False):
         unsafe_allow_html=True,
     )
 
-    tab_info, tab_media = st.tabs(["Información", "Multimedia"])
+    if editable and uid:
+        tab_info, tab_media, tab_msg = st.tabs(["Información", "Multimedia", "Mensaje"])
+    else:
+        tab_info, tab_media = st.tabs(["Información", "Multimedia"])
+        tab_msg = None
 
     with tab_info:
         st.subheader("Descripción / Metodología")
@@ -404,6 +534,109 @@ def perfil_profesional_view(datos, *, editable: bool = False):
             st.info("Este profesional no tiene certificados cargados.")
 
     with tab_media:
-        st.empty()
+        if not (editable and int(prof_id or 0)):
+            st.empty()
+        else:
+            uid = int(prof_id or 0)
 
-   
+            st.warning(
+                "Aviso Importante: Para garantizar una visualización correcta, asegúrate de que tus videos (TikTok, Instagram, Facebook o YouTube) estén configurados como PÚBLICOS. Los enlaces a contenido privado no se visualizarán."
+            )
+
+            st.markdown(
+                """
+                <style>
+                .synapse-media-row{max-width:760px;margin:0 auto}
+                .synapse-media-icon{
+                    width:40px;height:40px;border-radius:14px;
+                    display:flex;align-items:center;justify-content:center;
+                    background:#F1F5F9;border:1px solid rgba(15,23,42,.08);
+                    font-size:18px;
+                    box-shadow: 4px 4px 10px rgba(15,23,42,.08);
+                    margin-top: 20px;
+                }
+                .synapse-media-label{font-weight:800;color:#0F172A;margin-top:14px;margin-bottom:6px}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            def _init_key(key: str, value: str | None):
+                if key not in st.session_state:
+                    st.session_state[key] = (value or "")
+
+            k_tt = f"pro_media_tiktok_{uid}"
+            k_ig = f"pro_media_instagram_{uid}"
+            k_fb = f"pro_media_facebook_{uid}"
+            k_yt = f"pro_media_youtube_{uid}"
+
+            _init_key(k_tt, datos.get("url_tiktok"))
+            _init_key(k_ig, datos.get("url_instagram"))
+            _init_key(k_fb, datos.get("url_facebook"))
+            _init_key(k_yt, datos.get("url_youtube"))
+
+            def _render_row(nombre: str, key: str, placeholder: str, dominio: str | None):
+                st.markdown("<div class='synapse-media-row'>", unsafe_allow_html=True)
+                st.markdown(f"<div class='synapse-media-label'>{nombre}</div>", unsafe_allow_html=True)
+                url = st.text_input(nombre, placeholder=placeholder, key=key, label_visibility="collapsed")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                url = (url or "").strip()
+                if not url:
+                    return
+                host = (urlparse(url).netloc or "").lower()
+                if dominio and dominio not in host:
+                    st.info(f"Pega un enlace de {nombre}.")
+                    return
+                html_embed = _multimedia_embed_html(url)
+                if not html_embed:
+                    st.info(f"Enlace de {nombre} inválido.")
+                    return
+                components.html(html_embed, height=640, scrolling=False)
+
+            _render_row(
+                "TikTok",
+                k_tt,
+                "Ej: https://www.tiktok.com/@usuario/video/123...",
+                "tiktok.com",
+            )
+            _render_row(
+                "Instagram",
+                k_ig,
+                "Ej: https://www.instagram.com/reel/ABC...",
+                "instagram.com",
+            )
+            _render_row(
+                "Facebook",
+                k_fb,
+                "Ej: https://www.facebook.com/...",
+                "facebook.com",
+            )
+            _render_row(
+                "YouTube",
+                k_yt,
+                "Ej: https://youtu.be/ID o https://www.youtube.com/watch?v=ID",
+                "youtube.com",
+            )
+
+            if st.button("Guardar enlaces", use_container_width=True, key=f"pro_media_save_{uid}"):
+                ok = actualizar_profesional(
+                    uid,
+                    {
+                        "url_tiktok": (st.session_state.get(k_tt) or "").strip() or None,
+                        "url_instagram": (st.session_state.get(k_ig) or "").strip() or None,
+                        "url_facebook": (st.session_state.get(k_fb) or "").strip() or None,
+                        "url_youtube": (st.session_state.get(k_yt) or "").strip() or None,
+                    },
+                )
+                if ok:
+                    st.success("Enlaces guardados.")
+                    st.rerun()
+                else:
+                    st.warning("No se pudieron guardar los enlaces.")
+
+    if tab_msg is not None:
+        with tab_msg:
+            st.subheader("Mensajes")
+            st.caption("Aquí te llegarán los mensajes que te escriban los clientes.")
+            st.info("La bandeja de mensajes está en desarrollo. Pronto verás aquí tus conversaciones.")
