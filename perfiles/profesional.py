@@ -1,20 +1,91 @@
 import base64
 import html
+import json
 import re
-from urllib.parse import quote, urlparse, parse_qs
+from urllib.parse import quote, urlparse, parse_qs, urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 import streamlit as st
 import streamlit.components.v1 as components
+from chat.realtime import render_realtime_chat
 from basededatos.manejarbasededatos import (
     DEPARTAMENTOS_COLOMBIA,
     actualizar_profesional,
     guardar_foto_profesional,
     listar_certificaciones_profesional,
+    listar_clientes_de_profesional,
 )
+
+
+BACKEND_API_BASE = "http://localhost:8001"
 
 
 def _h(value) -> str:
     return html.escape("" if value is None else str(value))
+
+
+def _qp_get(key: str):
+    try:
+        v = st.query_params.get(key)
+        if isinstance(v, (list, tuple)):
+            return v[0] if v else None
+        return v
+    except Exception:
+        v = st.experimental_get_query_params().get(key)
+        return v[0] if isinstance(v, list) and v else None
+
+
+def _backend_url(path: str, params: dict | None = None) -> str:
+    base = (BACKEND_API_BASE or "").strip().rstrip("/")
+    url = base + (path or "")
+    if params:
+        qs = urlencode({k: v for k, v in params.items() if v is not None})
+        if qs:
+            url += "?" + qs
+    return url
+
+
+def _backend_get_json(path: str, params: dict | None = None):
+    url = _backend_url(path, params)
+    req = Request(url, method="GET", headers={"Accept": "application/json"})
+    try:
+        with urlopen(req, timeout=12) as r:
+            raw = r.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        raise RuntimeError(body or f"HTTP {getattr(e, 'code', 'error')}")
+    except URLError as e:
+        reason = getattr(e, "reason", None)
+        raise RuntimeError(str(reason) if reason else str(e))
+
+
+def _backend_post_json(path: str, params: dict | None, payload: dict):
+    url = _backend_url(path, params)
+    data = json.dumps(payload).encode("utf-8")
+    req = Request(
+        url,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=12) as r:
+            raw = r.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        raise RuntimeError(body or f"HTTP {getattr(e, 'code', 'error')}")
+    except URLError as e:
+        reason = getattr(e, "reason", None)
+        raise RuntimeError(str(reason) if reason else str(e))
 
 
 def _responsive_iframe(src: str, *, title: str = "Multimedia", aspect_ratio: float = 9 / 16):
@@ -639,4 +710,49 @@ def perfil_profesional_view(datos, *, editable: bool = False):
         with tab_msg:
             st.subheader("Mensajes")
             st.caption("Aquí te llegarán los mensajes que te escriban los clientes.")
-            st.info("La bandeja de mensajes está en desarrollo. Pronto verás aquí tus conversaciones.")
+
+            token_chat = st.session_state.get("auth_token") or _qp_get("s")
+            if not token_chat:
+                st.info("Inicia sesión para ver tus mensajes.")
+            else:
+                try:
+                    inbox = _backend_get_json(
+                        "/inbox",
+                        {"token": str(token_chat), "limit": 50},
+                    )
+                    convs = inbox.get("items") or []
+                except Exception as e:
+                    st.error(f"No se pudo cargar tu bandeja: {e}")
+                    convs = []
+
+                if not convs:
+                    st.info("Aún no tienes mensajes de clientes.")
+                else:
+                    options = []
+                    id_map = {}
+                    name_map = {}
+                    for r in convs:
+                        cid = int(r.get("cliente_id") or 0)
+                        nombre_cli = (r.get("nombre") or "Cliente").strip() or "Cliente"
+                        last_at = (r.get("last_at") or "")
+                        last_at = last_at.replace("T", " ")[:19] if last_at else ""
+                        label = f"{nombre_cli} (ID {cid})"
+                        if last_at:
+                            label = f"{label} • {last_at}"
+                        options.append(label)
+                        id_map[label] = cid
+                        name_map[label] = nombre_cli
+
+                    sel = st.selectbox("Selecciona un cliente", options, key=f"pro_msg_sel_{uid}")
+                    cid = int(id_map.get(sel) or 0)
+                    cliente_nombre = name_map.get(sel) or "Cliente"
+
+                    st.markdown(f"### {cliente_nombre}")
+
+                    render_realtime_chat(
+                        token=str(token_chat),
+                        rol="profesional",
+                        cliente_id=int(cid),
+                        profesional_id=int(uid),
+                        height=640,
+                    )

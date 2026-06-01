@@ -209,7 +209,11 @@ def barra_navegacion_glass():
             st.markdown(f'<div class="{is_active}">', unsafe_allow_html=True)
             if st.button("Inicio", key="nav_p_inicio", use_container_width=True):
                 st.session_state.submenu_actual = "Inicio"
-                _qp_set({"tab": "Inicio"})
+                if "selected_profesional_id" in st.session_state:
+                    st.session_state.selected_profesional_id = None
+                if "selected_cliente_chat_id" in st.session_state:
+                    st.session_state.selected_cliente_chat_id = None
+                _qp_set({"tab": "Inicio", "prof": None, "cli": None})
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 

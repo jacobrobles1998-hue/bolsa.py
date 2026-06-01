@@ -2,8 +2,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 import base64
 import html as _html
+import json
 import random
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
+from chat.realtime import render_realtime_chat
 
 # 1. Configuración de la página
 st.set_page_config(
@@ -49,6 +54,61 @@ from estilo.estilocss import css__styles
 from interfaz_base import barra_navegacion_glass
 
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) 
+
+BACKEND_API_BASE = "http://localhost:8001"
+
+
+def _backend_url(path: str, params: dict | None = None) -> str:
+    base = (BACKEND_API_BASE or "").strip().rstrip("/")
+    url = base + (path or "")
+    if params:
+        qs = urlencode({k: v for k, v in params.items() if v is not None})
+        if qs:
+            url += "?" + qs
+    return url
+
+
+def _backend_get_json(path: str, params: dict | None = None):
+    url = _backend_url(path, params)
+    req = Request(url, method="GET", headers={"Accept": "application/json"})
+    try:
+        with urlopen(req, timeout=12) as r:
+            raw = r.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        raise RuntimeError(body or f"HTTP {getattr(e, 'code', 'error')}")
+    except URLError as e:
+        reason = getattr(e, "reason", None)
+        raise RuntimeError(str(reason) if reason else str(e))
+
+
+def _backend_post_json(path: str, params: dict | None, payload: dict):
+    url = _backend_url(path, params)
+    data = json.dumps(payload).encode("utf-8")
+    req = Request(
+        url,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=12) as r:
+            raw = r.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        raise RuntimeError(body or f"HTTP {getattr(e, 'code', 'error')}")
+    except URLError as e:
+        reason = getattr(e, "reason", None)
+        raise RuntimeError(str(reason) if reason else str(e))
+
 
 def _h(value) -> str:
     return _html.escape("" if value is None else str(value))
@@ -136,6 +196,7 @@ if "rol" not in st.session_state: st.session_state.rol = None
 if "usuario_id" not in st.session_state: st.session_state.usuario_id = None
 if "submenu_actual" not in st.session_state: st.session_state.submenu_actual = "Inicio"
 if "selected_profesional_id" not in st.session_state: st.session_state.selected_profesional_id = None
+if "selected_cliente_chat_id" not in st.session_state: st.session_state.selected_cliente_chat_id = None
 
 tab_q = _qp_get("tab")
 if tab_q == "Progreso":
@@ -146,7 +207,8 @@ if tab_q in {"Inicio", "Mensajes", "Contratos", "perfil"}:
     st.session_state.submenu_actual = tab_q
 
 prof_q = _qp_get("prof")
-if prof_q and str(prof_q).isdigit(): st.session_state.selected_profesional_id = int(prof_q)
+if st.session_state.submenu_actual == "Inicio" and prof_q and str(prof_q).isdigit():
+    st.session_state.selected_profesional_id = int(prof_q)
 
 if not st.session_state.logeado:
     token_q = _qp_get("s") or st.session_state.get("auth_token")
@@ -232,7 +294,7 @@ if st.session_state.logeado:
                         if st.button("Contacta al profesional aquí", use_container_width=True, key="contactar_prof_detalle"):
                             st.session_state.selected_profesional_id = int(profesional_id)
                             st.session_state.submenu_actual = "Mensajes"
-                            _qp_set({"tab": "Mensajes", "prof": int(profesional_id)})
+                            _qp_set({"tab": "Mensajes"})
                             st.rerun()
                     with col_c2:
                         if st.button("Ver contratos", use_container_width=True, key="ver_contratos_desde_detalle"):
@@ -430,29 +492,147 @@ if st.session_state.logeado:
     elif vista == "Mensajes":
         st.markdown("<h2 style='color:white;'>Mensajes</h2>", unsafe_allow_html=True)
 
-        if rol == "cliente":
-            pid = st.session_state.get("selected_profesional_id")
-            if not pid:
-                st.info("Selecciona un profesional en Inicio y pulsa 'Contacta al profesional aquí'.")
-            else:
-                profesional = obtener_profesional_por_id(int(pid))
-                if not profesional:
-                    st.info("No se encontró el profesional.")
-                else:
-                    st.markdown(f"### {profesional.get('nombre') or 'Profesional'}")
-                    st.caption("Aquí irá el chat. Por ahora puedes contratar desde aquí.")
+# aqui inicia los codigos dl chat del cliente
 
-                    tarifa = profesional.get("tarifa")
+        token_chat = st.session_state.get("auth_token") or _qp_get("s")
+        if not token_chat:
+            st.info("Inicia sesión para ver tus mensajes.")
+        else:
+            if rol == "cliente":
+                pid = st.session_state.get("selected_profesional_id")
+
+                if pid is None:
+                    st.markdown("### Tus conversaciones")
+                    try:
+                        inbox = _backend_get_json(
+                            "/inbox",
+                            {"token": str(token_chat), "limit": 50},
+                        )
+                        convs = inbox.get("items") or []
+                    except Exception as e:
+                        st.error(f"No se pudo cargar tu bandeja: {e}")
+                        convs = []
+
+                    if not convs:
+                        st.info("Aún no tienes conversaciones. Entra a Inicio y contacta a un profesional.")
+                    else:
+                        options = []
+                        id_map = {}
+                        for r in convs:
+                            pid_r = int(r.get("profesional_id") or 0)
+                            nombre_r = (r.get("nombre") or "Profesional").strip() or "Profesional"
+                            last_at = (r.get("last_at") or "")
+                            last_at = last_at.replace("T", " ")[:19] if last_at else ""
+                            label = f"{nombre_r} (ID {pid_r})"
+                            if last_at:
+                                label = f"{label} • {last_at}"
+                            options.append(label)
+                            id_map[label] = pid_r
+
+                        inbox_key = f"chat_inbox_cli_{usuario_id}"
+                        st.selectbox("Selecciona un profesional", options, key=inbox_key)
+
+                        def _open_chat_cli():
+                            sel = st.session_state.get(inbox_key)
+                            pid_sel = int(id_map.get(sel) or 0)
+                            if not pid_sel:
+                                return
+                            st.session_state.selected_profesional_id = pid_sel
+                            _qp_set({"tab": "Mensajes"})
+
+                        st.button("Abrir chat", use_container_width=True, key=f"chat_open_cli_{usuario_id}", on_click=_open_chat_cli)
+                else:
+                    pid = int(pid)
+                    prof = obtener_profesional_por_id(pid) or {}
+                    st.markdown(f"### {prof.get('nombre') or 'Profesional'}")
+
+                    tarifa = prof.get("tarifa")
                     monto = float(tarifa) if tarifa is not None else None
-                    if st.button("Contratar a este profesional", use_container_width=True, key="contratar_prof_mensajes"):
+
+                    render_realtime_chat(
+                        token=str(token_chat),
+                        rol="cliente",
+                        cliente_id=int(usuario_id),
+                        profesional_id=int(pid),
+                        height=640,
+                    )
+
+                    if st.button("Contratar a este profesional", use_container_width=True, key=f"contratar_prof_mensajes_{usuario_id}_{pid}"):
                         crear_contrato(id_cliente=int(usuario_id), id_profesional=int(pid), monto=monto)
                         st.session_state.submenu_actual = "Contratos"
                         _qp_set({"tab": "Contratos"})
                         st.success("¡Contrato solicitado de manera exitosa!")
                         st.rerun()
-        else:
-            st.info("Aquí irán tus mensajes con tus clientes. (Pendiente)")
 
+            else:
+                st.markdown("### Bandeja de mensajes")
+
+                cid = st.session_state.get("selected_cliente_chat_id")
+
+                if cid is None:
+                    try:
+                        inbox = _backend_get_json(
+                            "/inbox",
+                            {"token": str(token_chat), "limit": 50},
+                        )
+                        convs = inbox.get("items") or []
+                    except Exception as e:
+                        st.error(f"No se pudo cargar tu bandeja: {e}")
+                        convs = []
+
+                    if not convs:
+                        st.info("Aún no tienes mensajes de clientes.")
+                    else:
+                        options = []
+                        id_map = {}
+                        name_map = {}
+                        for r in convs:
+                            cid_r = int(r.get("cliente_id") or 0)
+                            nombre_r = (r.get("nombre") or "Cliente").strip() or "Cliente"
+                            last_at = (r.get("last_at") or "")
+                            last_at = last_at.replace("T", " ")[:19] if last_at else ""
+                            label = f"{nombre_r} (ID {cid_r})"
+                            if last_at:
+                                label = f"{label} • {last_at}"
+                            options.append(label)
+                            id_map[label] = cid_r
+                            name_map[label] = nombre_r
+
+                        inbox_key = f"chat_inbox_pro_{usuario_id}"
+                        st.selectbox("Selecciona un cliente", options, key=inbox_key)
+
+                        def _open_chat_pro():
+                            sel = st.session_state.get(inbox_key)
+                            cid_sel = int(id_map.get(sel) or 0)
+                            if not cid_sel:
+                                return
+                            st.session_state.selected_cliente_chat_id = cid_sel
+                            _qp_set({"tab": "Mensajes"})
+
+                        st.button(
+                            "Abrir chat",
+                            use_container_width=True,
+                            key=f"chat_open_pro_{usuario_id}",
+                            on_click=_open_chat_pro,
+                        )
+                else:
+                    cid = int(cid)
+                    cliente = obtener_cliente_por_id(cid) or {}
+                    cliente_nombre = (cliente.get("nombre") or "Cliente").strip() or "Cliente"
+                    st.markdown(f"### {cliente_nombre}")
+
+                    if st.button("Volver", use_container_width=True, key=f"chat_back_inbox_pro_{usuario_id}_{cid}"):
+                        st.session_state.selected_cliente_chat_id = None
+                        _qp_set({"tab": "Mensajes"})
+                        st.rerun()
+
+                    render_realtime_chat(
+                        token=str(token_chat),
+                        rol="profesional",
+                        cliente_id=int(cid),
+                        profesional_id=int(usuario_id),
+                        height=640,
+                    )
     elif vista == "Contratos":
         st.markdown("<h2 style='color:white;'>Contratos</h2>", unsafe_allow_html=True)
 
@@ -491,6 +671,139 @@ if st.session_state.logeado:
                         if fecha:
                             st.write(f"Fecha: {fecha}")
                         st.markdown("---")
+
+    elif vista == "Progreso":
+        st.markdown("<h2 style='color:white;'>Mensajes</h2>", unsafe_allow_html=True)
+        token_chat = st.session_state.get("auth_token") or _qp_get("s")
+        if not token_chat:
+            st.info("Inicia sesión para ver tus mensajes.")
+        else:
+            if rol == "cliente":
+                pid = st.session_state.get("selected_profesional_id")
+                if pid is None:
+                    st.info("Entra a Inicio, abre un profesional y pulsa 'Contacta al profesional aquí'.")
+                else:
+                    pid = int(pid)
+                    prof = obtener_profesional_por_id(pid) or {}
+                    st.markdown(f"### {prof.get('nombre') or 'Profesional'}")
+
+                    col_r1, col_r2 = st.columns([1, 1])
+                    with col_r2:
+                        if st.button("Actualizar", use_container_width=True, key=f"chat_refresh_cli_{usuario_id}_{pid}"):
+                            st.rerun()
+
+                    try:
+                        resp = _backend_get_json(
+                            "/messages",
+                            {"token": str(token_chat), "profesional_id": pid, "limit": 80},
+                        )
+                        items = resp.get("items") or []
+                    except Exception as e:
+                        st.error(f"No se pudo cargar el chat: {e}")
+                        items = []
+
+                    if items:
+                        for m in items:
+                            sender_rol = (m.get("sender_rol") or "").strip().lower()
+                            sender_id = int(m.get("sender_id") or 0)
+                            yo = sender_rol == "cliente" and sender_id == int(usuario_id)
+                            who = "Tú" if yo else (prof.get("nombre") or "Profesional")
+                            ts = (m.get("created_at") or "")
+                            ts = ts.replace("T", " ")[:19] if ts else ""
+                            texto = m.get("texto") or ""
+                            st.write(f"{who} {f'[{ts}]' if ts else ''}: {texto}")
+                    else:
+                        st.info("Aún no hay mensajes.")
+
+                    msg_key = f"chat_msg_cli_{usuario_id}_{pid}"
+                    st.text_area("Escribe tu mensaje", key=msg_key, height=90)
+                    col_s1, col_s2 = st.columns([1, 1])
+                    with col_s1:
+                        if st.button("Enviar", use_container_width=True, key=f"chat_send_cli_{usuario_id}_{pid}"):
+                            texto = (st.session_state.get(msg_key) or "").strip()
+                            if not texto:
+                                st.warning("Escribe un mensaje.")
+                            else:
+                                try:
+                                    _backend_post_json(
+                                        "/messages",
+                                        {"token": str(token_chat)},
+                                        {"profesional_id": pid, "texto": texto},
+                                    )
+                                except Exception as e:
+                                    st.error(f"No se pudo enviar el mensaje: {e}")
+                                else:
+                                    st.session_state[msg_key] = ""
+                                    st.rerun()
+                    with col_s2:
+                        if st.button("Ir a Inicio", use_container_width=True, key=f"chat_back_inicio_cli_{usuario_id}_{pid}"):
+                            st.session_state.submenu_actual = "Inicio"
+                            _qp_set({"tab": "Inicio"})
+                            st.rerun()
+
+            else:
+                st.markdown("### Bandeja de clientes")
+                clientes = listar_clientes_de_profesional(int(usuario_id))
+                if not clientes:
+                    st.info("Aún no tienes clientes con contrato activo.")
+                else:
+                    options = []
+                    id_map = {}
+                    for c in clientes:
+                        cid = int(c.get("id") or 0)
+                        label = f"{c.get('nombre') or 'Cliente'} (ID {cid})"
+                        options.append(label)
+                        id_map[label] = cid
+
+                    sel = st.selectbox("Selecciona un cliente", options, key=f"chat_sel_cli_{usuario_id}")
+                    cid = int(id_map.get(sel) or 0)
+
+                    col_r1, col_r2 = st.columns([1, 1])
+                    with col_r2:
+                        if st.button("Actualizar", use_container_width=True, key=f"chat_refresh_pro_{usuario_id}_{cid}"):
+                            st.rerun()
+
+                    try:
+                        resp = _backend_get_json(
+                            "/messages",
+                            {"token": str(token_chat), "cliente_id": cid, "limit": 80},
+                        )
+                        items = resp.get("items") or []
+                    except Exception as e:
+                        st.error(f"No se pudo cargar el chat: {e}")
+                        items = []
+
+                    if items:
+                        for m in items:
+                            sender_rol = (m.get("sender_rol") or "").strip().lower()
+                            sender_id = int(m.get("sender_id") or 0)
+                            yo = sender_rol == "profesional" and sender_id == int(usuario_id)
+                            who = "Tú" if yo else (sel.split("(", 1)[0].strip() or "Cliente")
+                            ts = (m.get("created_at") or "")
+                            ts = ts.replace("T", " ")[:19] if ts else ""
+                            texto = m.get("texto") or ""
+                            st.write(f"{who} {f'[{ts}]' if ts else ''}: {texto}")
+                    else:
+                        st.info("Aún no hay mensajes.")
+
+                    msg_key = f"chat_msg_pro_{usuario_id}_{cid}"
+                    st.text_area("Escribe tu mensaje", key=msg_key, height=90)
+                    if st.button("Enviar", use_container_width=True, key=f"chat_send_pro_{usuario_id}_{cid}"):
+                        texto = (st.session_state.get(msg_key) or "").strip()
+                        if not texto:
+                            st.warning("Escribe un mensaje.")
+                        else:
+                            try:
+                                _backend_post_json(
+                                    "/messages",
+                                    {"token": str(token_chat)},
+                                    {"cliente_id": cid, "texto": texto},
+                                )
+                            except Exception as e:
+                                st.error(f"No se pudo enviar el mensaje: {e}")
+                            else:
+                                st.session_state[msg_key] = ""
+                                st.rerun()
 
     elif vista == "perfil":
         st.markdown("<h2 style='color:white;'>Mi perfil</h2>", unsafe_allow_html=True)
