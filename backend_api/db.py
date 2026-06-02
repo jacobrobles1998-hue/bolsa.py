@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS mensajes (
     sender_rol TEXT NOT NULL,
     sender_id INTEGER NOT NULL,
     texto TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    # aqui comienza las notificaciones
+    created_at TEXT NOT NULL,
+    read_by_cliente_at TEXT,
+    read_by_profesional_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_mensajes_conv_id_created ON mensajes(conv_id, created_at);
@@ -18,10 +21,21 @@ CREATE INDEX IF NOT EXISTS idx_mensajes_conv_id_created ON mensajes(conv_id, cre
 
 def _conv_id(cliente_id: int, profesional_id: int) -> str:
     return f"c{int(cliente_id)}_p{int(profesional_id)}"
+# aqui comienza los codigos de las notificaciones de mensajes
+async def _ensure_column(db: aiosqlite.Connection, table: str, column: str, definition: str):
+    async with db.execute(f"PRAGMA table_info({table})") as cur:
+        rows = await cur.fetchall()
+    existing = {r[1] for r in rows}
+    if column in existing:
+        return
+    await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH.as_posix()) as db:
         await db.executescript(_SCHEMA)
+        # parte del codigo de notificaciones
+        await _ensure_column(db, "mensajes", "read_by_cliente_at", "TEXT")
+        await _ensure_column(db, "mensajes", "read_by_profesional_at", "TEXT")
         await db.commit()
 
 async def get_session(token: str):
@@ -53,7 +67,7 @@ async def list_messages(*, cliente_id: int, profesional_id: int, limit: int = 50
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, conv_id, cliente_id, profesional_id, sender_rol, sender_id, texto, created_at
+            SELECT id, conv_id, cliente_id, profesional_id, sender_rol, sender_id, texto, created_at, read_by_cliente_at, read_by_profesional_at
             FROM mensajes
             WHERE conv_id = ?
             ORDER BY created_at DESC
@@ -65,6 +79,35 @@ async def list_messages(*, cliente_id: int, profesional_id: int, limit: int = 50
             out = [dict(r) for r in rows]
             out.reverse()
             return out
+
+# parte del codigo de notificaciones
+async def mark_conversation_read(*, cliente_id: int, profesional_id: int, reader_rol: str, read_at: str):
+    conv_id = _conv_id(cliente_id, profesional_id)
+    rol = (reader_rol or "").strip().lower()
+    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
+        if rol == "cliente":
+            await db.execute(
+                """
+                UPDATE mensajes
+                SET read_by_cliente_at = ?
+                WHERE conv_id = ?
+                  AND sender_rol = 'profesional'
+                  AND (read_by_cliente_at IS NULL OR read_by_cliente_at = '')
+                """,
+                (str(read_at), conv_id),
+            )
+        elif rol == "profesional":
+            await db.execute(
+                """
+                UPDATE mensajes
+                SET read_by_profesional_at = ?
+                WHERE conv_id = ?
+                  AND sender_rol = 'cliente'
+                  AND (read_by_profesional_at IS NULL OR read_by_profesional_at = '')
+                """,
+                (str(read_at), conv_id),
+            )
+        await db.commit()
 
 
 async def inbox_profesional(*, profesional_id: int, limit: int = 30):
@@ -83,7 +126,16 @@ async def inbox_profesional(*, profesional_id: int, limit: int = 30):
                     WHERE m2.cliente_id = m.cliente_id AND m2.profesional_id = m.profesional_id
                     ORDER BY m2.created_at DESC
                     LIMIT 1
-                ) AS last_texto
+                    # codigo de notificaciones
+                ) AS last_texto,
+                (
+                    SELECT COUNT(1)
+                    FROM mensajes mu
+                    WHERE mu.cliente_id = m.cliente_id
+                      AND mu.profesional_id = m.profesional_id
+                      AND mu.sender_rol = 'cliente'
+                      AND (mu.read_by_profesional_at IS NULL OR mu.read_by_profesional_at = '')
+                ) AS unread_count
             FROM mensajes m
             LEFT JOIN clientes c ON c.id = m.cliente_id
             WHERE m.profesional_id = ?
@@ -113,7 +165,16 @@ async def inbox_cliente(*, cliente_id: int, limit: int = 30):
                     WHERE m2.cliente_id = m.cliente_id AND m2.profesional_id = m.profesional_id
                     ORDER BY m2.created_at DESC
                     LIMIT 1
-                ) AS last_texto
+                    # codigo de notificaciones
+                ) AS last_texto,
+                (
+                    SELECT COUNT(1)
+                    FROM mensajes mu
+                    WHERE mu.cliente_id = m.cliente_id
+                      AND mu.profesional_id = m.profesional_id
+                      AND mu.sender_rol = 'profesional'
+                      AND (mu.read_by_cliente_at IS NULL OR mu.read_by_cliente_at = '')
+                ) AS unread_count
             FROM mensajes m
             LEFT JOIN profesionales p ON p.id = m.profesional_id
             WHERE m.cliente_id = ?

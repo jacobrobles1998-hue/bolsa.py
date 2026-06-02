@@ -6,7 +6,8 @@ import socketio
 
 from .settings import CORS_ORIGINS
 from .auth import validate_token
-from .db import init_db, inbox_cliente, inbox_profesional, insert_message, list_messages
+# notificaciones
+from .db import init_db, inbox_cliente, inbox_profesional, insert_message, list_messages, mark_conversation_read
 from .schemas import JoinConversationIn, SendMessageIn
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=CORS_ORIGINS)
@@ -90,6 +91,16 @@ async def get_messages(
         profesional_id=int(profesional_id),
         limit=int(limit),
     )
+#codigo de notificaciones
+
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    await mark_conversation_read(
+        cliente_id=int(cliente_id),
+        profesional_id=int(profesional_id),
+        reader_rol=str(user["rol"]),
+        read_at=now,
+    )
+
     return {
         "cliente_id": int(cliente_id),
         "profesional_id": int(profesional_id),
@@ -179,6 +190,14 @@ async def join_conversation(sid, data):
     await sio.enter_room(sid, room)
 
     items = await list_messages(cliente_id=cid, profesional_id=pid, limit=int(payload.limit or 50))
+    # codigo de notificaciones
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    await mark_conversation_read(
+        cliente_id=int(cid),
+        profesional_id=int(pid),
+        reader_rol=str(user["rol"]),
+        read_at=now,
+    )
     await sio.emit("history", {"cliente_id": cid, "profesional_id": pid, "items": items}, room=sid)
 
 

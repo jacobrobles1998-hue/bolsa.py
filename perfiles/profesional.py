@@ -1,6 +1,7 @@
 import base64
 import html
 import json
+import os
 import re
 from urllib.parse import quote, urlparse, parse_qs, urlencode
 from urllib.request import Request, urlopen
@@ -18,7 +19,7 @@ from basededatos.manejarbasededatos import (
 )
 
 
-BACKEND_API_BASE = "http://localhost:8001"
+BACKEND_API_BASE = os.environ.get("AXON_BACKEND_URL", "http://127.0.0.1:8000")
 
 
 def _h(value) -> str:
@@ -731,17 +732,25 @@ def perfil_profesional_view(datos, *, editable: bool = False):
                     options = []
                     id_map = {}
                     name_map = {}
+                    total_unread = 0
                     for r in convs:
                         cid = int(r.get("cliente_id") or 0)
                         nombre_cli = (r.get("nombre") or "Cliente").strip() or "Cliente"
                         last_at = (r.get("last_at") or "")
                         last_at = last_at.replace("T", " ")[:19] if last_at else ""
+                        unread = int(r.get("unread_count") or 0)
+                        total_unread += unread
                         label = f"{nombre_cli} (ID {cid})"
                         if last_at:
                             label = f"{label} • {last_at}"
+                        if unread > 0:
+                            label = f"🔴 {unread} · {label}"
                         options.append(label)
                         id_map[label] = cid
                         name_map[label] = nombre_cli
+
+                    if total_unread > 0:
+                        st.caption(f"Tienes {total_unread} mensajes sin leer")
 
                     sel = st.selectbox("Selecciona un cliente", options, key=f"pro_msg_sel_{uid}")
                     cid = int(id_map.get(sel) or 0)
@@ -755,4 +764,5 @@ def perfil_profesional_view(datos, *, editable: bool = False):
                         cliente_id=int(cid),
                         profesional_id=int(uid),
                         height=640,
+                        backend_url=BACKEND_API_BASE,
                     )

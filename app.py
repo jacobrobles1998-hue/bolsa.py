@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import base64
 import html as _html
 import json
+import os
 import random
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -55,7 +56,7 @@ from interfaz_base import barra_navegacion_glass
 
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) 
 
-BACKEND_API_BASE = "http://localhost:8001"
+BACKEND_API_BASE = os.environ.get("AXON_BACKEND_URL", "http://127.0.0.1:8000")
 
 
 def _backend_url(path: str, params: dict | None = None) -> str:
@@ -518,16 +519,24 @@ if st.session_state.logeado:
                     else:
                         options = []
                         id_map = {}
+                        total_unread = 0
                         for r in convs:
                             pid_r = int(r.get("profesional_id") or 0)
                             nombre_r = (r.get("nombre") or "Profesional").strip() or "Profesional"
                             last_at = (r.get("last_at") or "")
                             last_at = last_at.replace("T", " ")[:19] if last_at else ""
+                            unread = int(r.get("unread_count") or 0)
+                            total_unread += unread
                             label = f"{nombre_r} (ID {pid_r})"
                             if last_at:
                                 label = f"{label} • {last_at}"
+                            if unread > 0:
+                                label = f"🔴 {unread} · {label}"
                             options.append(label)
                             id_map[label] = pid_r
+
+                        if total_unread > 0:
+                            st.caption(f"Tienes {total_unread} mensajes sin leer")
 
                         inbox_key = f"chat_inbox_cli_{usuario_id}"
                         st.selectbox("Selecciona un profesional", options, key=inbox_key)
@@ -555,6 +564,7 @@ if st.session_state.logeado:
                         cliente_id=int(usuario_id),
                         profesional_id=int(pid),
                         height=640,
+                        backend_url=BACKEND_API_BASE,
                     )
 
                     if st.button("Contratar a este profesional", use_container_width=True, key=f"contratar_prof_mensajes_{usuario_id}_{pid}"):
@@ -586,17 +596,25 @@ if st.session_state.logeado:
                         options = []
                         id_map = {}
                         name_map = {}
+                        total_unread = 0
                         for r in convs:
                             cid_r = int(r.get("cliente_id") or 0)
                             nombre_r = (r.get("nombre") or "Cliente").strip() or "Cliente"
                             last_at = (r.get("last_at") or "")
                             last_at = last_at.replace("T", " ")[:19] if last_at else ""
+                            unread = int(r.get("unread_count") or 0)
+                            total_unread += unread
                             label = f"{nombre_r} (ID {cid_r})"
                             if last_at:
                                 label = f"{label} • {last_at}"
+                            if unread > 0:
+                                label = f"🔴 {unread} · {label}"
                             options.append(label)
                             id_map[label] = cid_r
                             name_map[label] = nombre_r
+
+                        if total_unread > 0:
+                            st.caption(f"Tienes {total_unread} mensajes sin leer")
 
                         inbox_key = f"chat_inbox_pro_{usuario_id}"
                         st.selectbox("Selecciona un cliente", options, key=inbox_key)
@@ -632,6 +650,7 @@ if st.session_state.logeado:
                         cliente_id=int(cid),
                         profesional_id=int(usuario_id),
                         height=640,
+                        backend_url=BACKEND_API_BASE,
                     )
     elif vista == "Contratos":
         st.markdown("<h2 style='color:white;'>Contratos</h2>", unsafe_allow_html=True)

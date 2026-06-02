@@ -9,7 +9,7 @@ def render_realtime_chat(
     cliente_id: int,
     profesional_id: int,
     height: int = 640,
-    backend_url: str = "http://localhost:8001",
+    backend_url: str = "http://127.0.0.1:8000",
 ):
     token = (token or "").strip()
     rol = (rol or "").strip().lower()
