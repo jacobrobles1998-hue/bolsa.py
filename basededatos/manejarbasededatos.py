@@ -10,6 +10,13 @@ import base64
 import unicodedata
 from difflib import SequenceMatcher
 
+from basededatos.modelos import (
+    CERTIFICACION_PROFESIONAL_COLUMNS,
+    CLIENT_COLUMNS,
+    CONTRATO_COLUMNS,
+    PROFESIONAL_COLUMNS,
+    SESION_COLUMNS,
+)
 
 DB_PATH = Path(__file__).resolve().parent / "bolsa_data.db"
 _SCHEMA_ENSURED = False
@@ -131,79 +138,10 @@ def _asegurar_schema(conn: sqlite3.Connection):
             """
         )
 
-        _ensure_columns(
-            cursor,
-            "profesionales",
-            [
-                ("nombre", "TEXT"),
-                ("email", "TEXT"),
-                ("telefono", "TEXT"),
-                ("password_hash", "TEXT"),
-                ("foto", "BLOB"),
-                ("foto_mime", "TEXT"),
-                ("departamento", "TEXT"),
-                ("ciudad", "TEXT"),
-                ("genero", "TEXT"),
-                ("edad", "INTEGER"),
-                ("altura", "REAL"),
-                ("peso", "REAL"),
-                ("especialidad", "TEXT"),
-                ("universidad", "TEXT"),
-                ("certificacion", "TEXT"),
-                ("experiencia", "INTEGER"),
-                ("tarifa", "REAL"),
-                ("metodologia", "TEXT"),
-                ("url_tiktok", "TEXT"),
-                ("url_instagram", "TEXT"),
-                ("url_facebook", "TEXT"),
-                ("url_youtube", "TEXT"),
-                ("estado_verificacion", "TEXT"),
-                ("created_at", "TEXT"),
-            ],
-        )
-        _ensure_columns(
-            cursor,
-            "clientes",
-            [
-                ("nombre", "TEXT"),
-                ("email", "TEXT"),
-                ("telefono", "TEXT"),
-                ("password_hash", "TEXT"),
-                ("foto", "BLOB"),
-                ("foto_mime", "TEXT"),
-                ("departamento", "TEXT"),
-                ("ciudad", "TEXT"),
-                ("genero", "TEXT"),
-                ("edad", "INTEGER"),
-                ("altura", "REAL"),
-                ("peso", "REAL"),
-                ("patologia_familiar", "TEXT"),
-                ("metodologia", "TEXT"),
-                ("created_at", "TEXT"),
-            ],
-        )
-        _ensure_columns(
-            cursor,
-            "contratos",
-            [
-                ("id_profesional", "INTEGER"),
-                ("id_cliente", "INTEGER"),
-                ("monto", "REAL"),
-                ("fecha", "TEXT"),
-                ("estado", "TEXT NOT NULL DEFAULT 'activo'"),
-            ],
-        )
-        _ensure_columns(
-            cursor,
-            "certificaciones_profesional",
-            [
-                ("id_profesional", "INTEGER"),
-                ("titulo", "TEXT"),
-                ("archivo", "BLOB"),
-                ("archivo_mime", "TEXT"),
-                ("created_at", "TEXT"),
-            ],
-        )
+        _ensure_columns(cursor, "profesionales", PROFESIONAL_COLUMNS)
+        _ensure_columns(cursor, "clientes", CLIENT_COLUMNS)
+        _ensure_columns(cursor, "contratos", CONTRATO_COLUMNS)
+        _ensure_columns(cursor, "certificaciones_profesional", CERTIFICACION_PROFESIONAL_COLUMNS)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_profesionales_especialidad ON profesionales(especialidad)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_profesionales_departamento ON profesionales(departamento)")

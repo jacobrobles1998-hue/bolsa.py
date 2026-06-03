@@ -8,7 +8,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-from chat.realtime import render_realtime_chat
+from chat.realtime import render_inbox_listener, render_realtime_chat
 
 # 1. Configuración de la página
 st.set_page_config(
@@ -503,6 +503,7 @@ if st.session_state.logeado:
 
                 if pid is None:
                     st.markdown("### Tus conversaciones")
+                    render_inbox_listener(token=str(token_chat), rol="cliente", user_id=int(usuario_id))
                     try:
                         inbox = _backend_get_json(
                             "/inbox",
@@ -570,6 +571,7 @@ if st.session_state.logeado:
                 cid = st.session_state.get("selected_cliente_chat_id")
 
                 if cid is None:
+                    render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(usuario_id))
                     try:
                         inbox = _backend_get_json(
                             "/inbox",

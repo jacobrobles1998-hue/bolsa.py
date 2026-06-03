@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 
 import streamlit as st
 import streamlit.components.v1 as components
-from chat.realtime import render_realtime_chat
+from chat.realtime import render_inbox_listener, render_realtime_chat, render_tab_badge_listener
 from basededatos.manejarbasededatos import (
     DEPARTAMENTOS_COLOMBIA,
     actualizar_profesional,
@@ -533,6 +533,9 @@ def perfil_profesional_view(datos, *, editable: bool = False):
 
     if editable and uid:
         tab_info, tab_media, tab_msg = st.tabs(["Información", "Multimedia", "Mensaje"])
+        token_badge = st.session_state.get("auth_token") or _qp_get("s")
+        if token_badge:
+            render_tab_badge_listener(token=str(token_badge), tab_text="Mensaje")
     else:
         tab_info, tab_media = st.tabs(["Información", "Multimedia"])
         tab_msg = None
@@ -726,6 +729,7 @@ def perfil_profesional_view(datos, *, editable: bool = False):
                     convs = []
 
                 if not convs:
+                    render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(uid))
                     st.info("Aún no tienes mensajes de clientes.")
                 else:
                     options = []

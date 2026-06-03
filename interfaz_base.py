@@ -3,6 +3,8 @@
 import streamlit as st
 import base64
 
+from chat.realtime import render_nav_badge_listener
+
 def barra_navegacion_glass():
     """
     Renderiza una barra de navegación premium basada en la referencia del usuario.
@@ -279,3 +281,7 @@ def barra_navegacion_glass():
                     st.session_state.selected_profesional_id = None
                 _qp_set({"tab": "perfil", "prof": None})
                 st.rerun()
+
+        token_badge = st.session_state.get("auth_token") or _qp_all().get("s")
+        if token_badge and st.session_state.get("logeado"):
+            render_nav_badge_listener(token=str(token_badge))

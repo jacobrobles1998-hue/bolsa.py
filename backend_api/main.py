@@ -6,7 +6,15 @@ import socketio
 
 from .settings import CORS_ORIGINS
 from .auth import validate_token
-from .db import init_db, inbox_cliente, inbox_profesional, insert_message, list_messages
+from .db import (
+    inbox_cliente,
+    inbox_profesional,
+    init_db,
+    insert_message,
+    list_messages,
+    mark_read,
+    unread_total,
+)
 from .schemas import JoinConversationIn, SendMessageIn
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=CORS_ORIGINS)
@@ -64,6 +72,16 @@ async def get_inbox(
         return {"rol": "profesional", "items": items}
     items = await inbox_cliente(cliente_id=int(user["user_id"]), limit=int(limit))
     return {"rol": "cliente", "items": items}
+
+
+@api.get("/unread_count")
+async def get_unread_count(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    token: str | None = Query(default=None),
+):
+    user = await _auth_from_headers_or_query(authorization, token)
+    total = await unread_total(rol=str(user["rol"]), user_id=int(user["user_id"]))
+    return {"rol": str(user["rol"]), "user_id": int(user["user_id"]), "unread": int(total)}
 
 
 @api.get("/messages")
@@ -140,6 +158,8 @@ async def post_message(
     }
     room = f"c{int(cliente_id)}_p{int(profesional_id)}"
     await sio.emit("message", payload, room=room)
+    await sio.emit("inbox_ping", payload, room=f"cliente_{int(cliente_id)}")
+    await sio.emit("inbox_ping", payload, room=f"profesional_{int(profesional_id)}")
     return {"ok": True, "message": payload}
 
 
@@ -159,6 +179,9 @@ async def connect(sid, environ, auth):
         return False
     await sio.save_session(sid, user)
 
+    room = f"{user['rol']}_{int(user['user_id'])}"
+    await sio.enter_room(sid, room)
+
 
 @sio.event
 async def join_conversation(sid, data):
@@ -177,6 +200,9 @@ async def join_conversation(sid, data):
 
     room = f"c{cid}_p{pid}"
     await sio.enter_room(sid, room)
+
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    await mark_read(cliente_id=cid, profesional_id=pid, rol=str(user["rol"]), at=now)
 
     items = await list_messages(cliente_id=cid, profesional_id=pid, limit=int(payload.limit or 50))
     await sio.emit("history", {"cliente_id": cid, "profesional_id": pid, "items": items}, room=sid)
@@ -224,6 +250,8 @@ async def send_message(sid, data):
     }
     room = f"c{cliente_id}_p{profesional_id}"
     await sio.emit("message", msg, room=room)
+    await sio.emit("inbox_ping", msg, room=f"cliente_{int(cliente_id)}")
+    await sio.emit("inbox_ping", msg, room=f"profesional_{int(profesional_id)}")
 
 
 app = socketio.ASGIApp(sio, other_asgi_app=api)

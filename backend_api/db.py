@@ -13,7 +13,18 @@ CREATE TABLE IF NOT EXISTS mensajes (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS conversaciones (
+    conv_id TEXT PRIMARY KEY,
+    cliente_id INTEGER NOT NULL,
+    profesional_id INTEGER NOT NULL,
+    last_at TEXT NOT NULL,
+    last_read_cli_at TEXT,
+    last_read_pro_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_mensajes_conv_id_created ON mensajes(conv_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_convs_cliente ON conversaciones(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_convs_profesional ON conversaciones(profesional_id);
 """
 
 def _conv_id(cliente_id: int, profesional_id: int) -> str:
@@ -43,6 +54,21 @@ async def insert_message(*, cliente_id: int, profesional_id: int, sender_rol: st
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (conv_id, int(cliente_id), int(profesional_id), str(sender_rol), int(sender_id), str(texto), str(created_at)),
+        )
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO conversaciones (conv_id, cliente_id, profesional_id, last_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (conv_id, int(cliente_id), int(profesional_id), str(created_at)),
+        )
+        await db.execute(
+            """
+            UPDATE conversaciones
+            SET last_at = ?
+            WHERE conv_id = ?
+            """,
+            (str(created_at), conv_id),
         )
         await db.commit()
 
@@ -74,20 +100,30 @@ async def inbox_profesional(*, profesional_id: int, limit: int = 30):
         async with db.execute(
             """
             SELECT
+                m.conv_id AS conv_id,
                 m.cliente_id AS cliente_id,
                 COALESCE(c.nombre, 'Cliente') AS nombre,
                 MAX(m.created_at) AS last_at,
                 (
                     SELECT m2.texto
                     FROM mensajes m2
-                    WHERE m2.cliente_id = m.cliente_id AND m2.profesional_id = m.profesional_id
+                    WHERE m2.conv_id = m.conv_id
                     ORDER BY m2.created_at DESC
                     LIMIT 1
-                ) AS last_texto
+                ) AS last_texto,
+                SUM(
+                    CASE
+                        WHEN m.sender_rol = 'cliente'
+                         AND m.created_at > COALESCE(v.last_read_pro_at, '')
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS unread
             FROM mensajes m
             LEFT JOIN clientes c ON c.id = m.cliente_id
+            LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
             WHERE m.profesional_id = ?
-            GROUP BY m.cliente_id
+            GROUP BY m.conv_id
             ORDER BY last_at DESC
             LIMIT ?
             """,
@@ -97,6 +133,80 @@ async def inbox_profesional(*, profesional_id: int, limit: int = 30):
             return [dict(r) for r in rows]
 
 
+async def mark_read(*, cliente_id: int, profesional_id: int, rol: str, at: str):
+    conv_id = _conv_id(cliente_id, profesional_id)
+    rol = (rol or "").strip().lower()
+    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO conversaciones (conv_id, cliente_id, profesional_id, last_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (conv_id, int(cliente_id), int(profesional_id), str(at)),
+        )
+        if rol == "cliente":
+            await db.execute(
+                """
+                UPDATE conversaciones
+                SET last_read_cli_at = ?
+                WHERE conv_id = ?
+                """,
+                (str(at), conv_id),
+            )
+        elif rol == "profesional":
+            await db.execute(
+                """
+                UPDATE conversaciones
+                SET last_read_pro_at = ?
+                WHERE conv_id = ?
+                """,
+                (str(at), conv_id),
+            )
+        await db.commit()
+
+
+async def unread_total(*, rol: str, user_id: int) -> int:
+    rol = (rol or "").strip().lower()
+    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
+        if rol == "cliente":
+            q = """
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN m.sender_rol = 'profesional'
+                     AND m.created_at > COALESCE(v.last_read_cli_at, '')
+                    THEN 1
+                    ELSE 0
+                END
+            ), 0) AS unread
+            FROM mensajes m
+            LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
+            WHERE m.cliente_id = ?
+            """
+            async with db.execute(q, (int(user_id),)) as cur:
+                row = await cur.fetchone()
+                return int(row[0] or 0)
+
+        if rol == "profesional":
+            q = """
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN m.sender_rol = 'cliente'
+                     AND m.created_at > COALESCE(v.last_read_pro_at, '')
+                    THEN 1
+                    ELSE 0
+                END
+            ), 0) AS unread
+            FROM mensajes m
+            LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
+            WHERE m.profesional_id = ?
+            """
+            async with db.execute(q, (int(user_id),)) as cur:
+                row = await cur.fetchone()
+                return int(row[0] or 0)
+
+    return 0
+
+
 async def inbox_cliente(*, cliente_id: int, limit: int = 30):
     limit = max(1, min(int(limit or 30), 200))
     async with aiosqlite.connect(DB_PATH.as_posix()) as db:
@@ -104,20 +214,30 @@ async def inbox_cliente(*, cliente_id: int, limit: int = 30):
         async with db.execute(
             """
             SELECT
+                m.conv_id AS conv_id,
                 m.profesional_id AS profesional_id,
                 COALESCE(p.nombre, 'Profesional') AS nombre,
                 MAX(m.created_at) AS last_at,
                 (
                     SELECT m2.texto
                     FROM mensajes m2
-                    WHERE m2.cliente_id = m.cliente_id AND m2.profesional_id = m.profesional_id
+                    WHERE m2.conv_id = m.conv_id
                     ORDER BY m2.created_at DESC
                     LIMIT 1
-                ) AS last_texto
+                ) AS last_texto,
+                SUM(
+                    CASE
+                        WHEN m.sender_rol = 'profesional'
+                         AND m.created_at > COALESCE(v.last_read_cli_at, '')
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS unread
             FROM mensajes m
             LEFT JOIN profesionales p ON p.id = m.profesional_id
+            LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
             WHERE m.cliente_id = ?
-            GROUP BY m.profesional_id
+            GROUP BY m.conv_id, m.profesional_id
             ORDER BY last_at DESC
             LIMIT ?
             """,
