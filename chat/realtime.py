@@ -629,6 +629,7 @@ def render_inbox_listener(
     rol: str,
     user_id: int,
     backend_url: str = "http://localhost:8001",
+    disable_reload: bool = False,
 ):
     token = (token or "").strip()
     rol = (rol or "").strip().lower()
@@ -642,6 +643,7 @@ def render_inbox_listener(
         "token": token,
         "rol": rol,
         "user_id": int(user_id),
+        "disable_reload": bool(disable_reload),
     }
 
     html = f"""
@@ -662,7 +664,8 @@ def render_inbox_listener(
     auth: {{ token: CFG.token }},
   }});
 
-  socket.on(\"inbox_ping\", (m) => {{
+  socket.on("inbox_ping", (m) => {{
+    if (CFG.disable_reload) return;
     if (pending) return;
     if (!m) return;
 

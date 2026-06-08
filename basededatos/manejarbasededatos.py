@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 import hmac
 import os
+import time
 from datetime import datetime
 import secrets
 from datetime import timedelta
@@ -164,6 +165,87 @@ def conectar_db():
     conn.execute("PRAGMA foreign_keys = ON")
     _asegurar_schema(conn)
     return conn
+
+_ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
+_MAX_PHOTO_BYTES = 3 * 1024 * 1024
+_MAX_CERT_BYTES = 6 * 1024 * 1024
+
+_LOGIN_WINDOW_S = 60.0
+_LOGIN_MAX_FAILS = 8
+_login_fails: dict[str, list[float]] = {}
+
+
+def _sniff_image_mime(data: bytes) -> str | None:
+    if not data:
+        return None
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if len(data) >= 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _validate_image_blob(raw: bytes, mime: str | None, *, max_bytes: int) -> tuple[bytes, str]:
+    if not raw:
+        raise ValueError("Archivo vacío")
+    if len(raw) > int(max_bytes):
+        raise ValueError("Archivo demasiado grande")
+
+    declared = (mime or "").strip().lower()
+    sniffed = _sniff_image_mime(raw)
+    final_mime = sniffed or declared
+
+    if not final_mime or final_mime not in _ALLOWED_IMAGE_MIME:
+        raise ValueError("Formato de imagen no permitido")
+
+    if sniffed and declared and sniffed != declared:
+        raise ValueError("Tipo de archivo no coincide con el contenido")
+
+    return raw, final_mime
+
+
+def _check_login_rate_limit(email: str):
+    now = time.monotonic()
+    key = (email or "").strip().lower()
+    if not key:
+        return
+
+    arr = _login_fails.get(key)
+    if arr is None:
+        arr = []
+        _login_fails[key] = arr
+
+    cutoff = now - _LOGIN_WINDOW_S
+    i = 0
+    while i < len(arr) and arr[i] < cutoff:
+        i += 1
+    if i:
+        del arr[:i]
+
+    if len(arr) >= _LOGIN_MAX_FAILS:
+        raise RuntimeError("Demasiados intentos. Espera 1 minuto y vuelve a intentar.")
+
+
+def _note_login_fail(email: str):
+    key = (email or "").strip().lower()
+    if not key:
+        return
+    now = time.monotonic()
+    arr = _login_fails.get(key)
+    if arr is None:
+        arr = []
+        _login_fails[key] = arr
+    arr.append(now)
+
+
+def _clear_login_fails(email: str):
+    key = (email or "").strip().lower()
+    if not key:
+        return
+    _login_fails.pop(key, None)
+
 
 def hash_password(password: str) -> str:
     password = password or ""
@@ -581,8 +663,12 @@ def autenticar_usuario(email: str, password: str):
     email = (email or "").strip().lower()
     if not email or not password:
         return None
+
+    _check_login_rate_limit(email)
+
     conn = conectar_db()
     cursor = conn.cursor()
+
     cursor.execute("SELECT * FROM profesionales WHERE lower(email) = ?", (email,))
     row = cursor.fetchone()
     if row and verify_password(password, row["password_hash"]):
@@ -591,6 +677,7 @@ def autenticar_usuario(email: str, password: str):
         except Exception:
             estado_verificacion = None
         conn.close()
+        _clear_login_fails(email)
         return {
             "rol": "profesional",
             "id": int(row["id"]),
@@ -602,7 +689,10 @@ def autenticar_usuario(email: str, password: str):
     row = cursor.fetchone()
     conn.close()
     if row and verify_password(password, row["password_hash"]):
+        _clear_login_fails(email)
         return {"rol": "cliente", "id": int(row["id"]), "nombre": row["nombre"]}
+
+    _note_login_fail(email)
     return None
 
 def crear_sesion(rol: str, user_id: int, dias: int = 30) -> str:
@@ -721,6 +811,53 @@ def actualizar_profesional(profesional_id: int, cambios: dict) -> bool:
     conn.close()
     return True
 
+
+def actualizar_cliente(cliente_id: int, cambios: dict) -> bool:
+    if not cambios:
+        return False
+
+    allowed = {
+        "nombre",
+        "telefono",
+        "departamento",
+        "ciudad",
+        "genero",
+        "edad",
+        "altura",
+        "peso",
+        "patologia_familiar",
+        "metodologia",
+    }
+
+    conn = conectar_db()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(clientes)")
+    cols = {r[1] for r in cursor.fetchall()}
+
+    update_items = []
+    params = []
+    for k, v in (cambios or {}).items():
+        if k not in allowed:
+            continue
+        if k not in cols:
+            continue
+        update_items.append(f"{k} = ?")
+        params.append(v)
+
+    if not update_items:
+        conn.close()
+        return False
+
+    params.append(int(cliente_id))
+    cursor.execute(
+        f"UPDATE clientes SET {', '.join(update_items)} WHERE id = ?",
+        tuple(params),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
 def obtener_cliente_por_id(cliente_id: int):
     conn = conectar_db()
     cursor = conn.cursor()
@@ -730,6 +867,7 @@ def obtener_cliente_por_id(cliente_id: int):
     return dict(row) if row else None
 
 def guardar_foto_profesional(profesional_id: int, foto_bytes: bytes, foto_mime: str | None = None):
+    foto_bytes, foto_mime = _validate_image_blob(bytes(foto_bytes or b""), foto_mime, max_bytes=_MAX_PHOTO_BYTES)
     conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -740,6 +878,7 @@ def guardar_foto_profesional(profesional_id: int, foto_bytes: bytes, foto_mime: 
     conn.close()
 
 def guardar_foto_cliente(cliente_id: int, foto_bytes: bytes, foto_mime: str | None = None):
+    foto_bytes, foto_mime = _validate_image_blob(bytes(foto_bytes or b""), foto_mime, max_bytes=_MAX_PHOTO_BYTES)
     conn = conectar_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -752,6 +891,8 @@ def guardar_foto_cliente(cliente_id: int, foto_bytes: bytes, foto_mime: str | No
 def agregar_certificacion_profesional(profesional_id: int, titulo: str | None = None, archivo_bytes: bytes | None = None, archivo_mime: str | None = None) -> int:
     if not archivo_bytes:
         raise ValueError("El archivo del certificado es obligatorio")
+    archivo_bytes, archivo_mime = _validate_image_blob(bytes(archivo_bytes or b""), archivo_mime, max_bytes=_MAX_CERT_BYTES)
+
     conn = conectar_db()
     cursor = conn.cursor()
     now = datetime.utcnow().isoformat(timespec="seconds")

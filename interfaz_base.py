@@ -190,7 +190,7 @@ def barra_navegacion_glass():
     with st.container():
         st.markdown('<div class="premium-nav-container">', unsafe_allow_html=True)
         
-        col_dots, col_1, col_2, col_3, col_search, col_avatar = st.columns([0.5, 1.1, 1.1, 1.1, 2.2, 0.75])
+        col_dots, col_1, col_2, col_3, col_search, col_actions = st.columns([0.5, 1.05, 1.05, 1.05, 2.35, 0.95])
 
         # Puntos decorativos estilo Mac de la esquina izquierda
         with col_dots:
@@ -249,22 +249,41 @@ def barra_navegacion_glass():
                 on_change=_on_search_change,
             )
 
-        # Avatar clicable (botón Streamlit: no recarga la página ni pierde la sesión)
-        with col_avatar:
-            avatar_src = _avatar_src()
+        with col_actions:
+            gear_svg = (
+                "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+                "<path fill='#334155' d='M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z'/>"
+                "</svg>"
+            )
+            user_svg = (
+                "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+                "<path fill='#334155' d='M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5Zm0 2c-4.42 0-8 2.24-8 5v1c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-1c0-2.76-3.58-5-8-5Z'/>"
+                "</svg>"
+            )
+            gear_src = f"data:image/svg+xml;base64,{base64.b64encode(gear_svg.encode('utf-8')).decode('ascii')}"
+            user_src = f"data:image/svg+xml;base64,{base64.b64encode(user_svg.encode('utf-8')).decode('ascii')}"
+
             st.markdown(
                 f"""
                 <style>
-                .st-key-nav_avatar {{
-                    display: flex;
-                    justify-content: center;
+                .st-key-nav_settings button {{
+                    width: 52px !important;
+                    height: 52px !important;
+                    min-width: 52px !important;
+                    border-radius: 16px !important;
+                    background: #F8FAFC url(\"{gear_src}\") center/22px 22px no-repeat !important;
+                    border: 1px solid rgba(15,23,42,.08) !important;
+                    box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
+                    color: transparent !important;
+                    font-size: 0 !important;
+                    padding: 0 !important;
                 }}
-                .st-key-nav_avatar button {{
-                    width: 68px !important;
-                    height: 68px !important;
-                    min-width: 68px !important;
+                .st-key-nav_profile button {{
+                    width: 60px !important;
+                    height: 60px !important;
+                    min-width: 60px !important;
                     border-radius: 50% !important;
-                    background: url("{avatar_src}") center/cover no-repeat !important;
+                    background: #F8FAFC url(\"{user_src}\") center/26px 26px no-repeat !important;
                     border: 2px solid #FFFFFF !important;
                     box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
                     color: transparent !important;
@@ -275,12 +294,20 @@ def barra_navegacion_glass():
                 """,
                 unsafe_allow_html=True,
             )
-            if st.button("\u00a0", key="nav_avatar", help="Ver mi perfil"):
-                st.session_state.submenu_actual = "perfil"
-                if "selected_profesional_id" in st.session_state:
-                    st.session_state.selected_profesional_id = None
-                _qp_set({"tab": "perfil", "prof": None})
-                st.rerun()
+
+            c_set, c_prof = st.columns([0.46, 0.54])
+            with c_set:
+                if st.button("\u00a0", key="nav_settings", help="Configuraciones"):
+                    st.session_state.submenu_actual = "Configuraciones"
+                    _qp_set({"tab": "Configuraciones"})
+                    st.rerun()
+            with c_prof:
+                if st.button("\u00a0", key="nav_profile", help="Ver mi perfil"):
+                    st.session_state.submenu_actual = "perfil"
+                    if "selected_profesional_id" in st.session_state:
+                        st.session_state.selected_profesional_id = None
+                    _qp_set({"tab": "perfil", "prof": None})
+                    st.rerun()
 
         token_badge = st.session_state.get("auth_token") or _qp_all().get("s")
         if token_badge and st.session_state.get("logeado"):
