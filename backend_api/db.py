@@ -22,9 +22,18 @@ CREATE TABLE IF NOT EXISTS conversaciones (
     last_read_pro_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS sesiones (
+    token TEXT PRIMARY KEY,
+    rol TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_mensajes_conv_id_created ON mensajes(conv_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_convs_cliente ON conversaciones(cliente_id);
 CREATE INDEX IF NOT EXISTS idx_convs_profesional ON conversaciones(profesional_id);
+CREATE INDEX IF NOT EXISTS idx_sesiones_expires ON sesiones(expires_at);
 """
 
 def _conv_id(cliente_id: int, profesional_id: int) -> str:

@@ -1,12 +1,45 @@
 
+import base64
 import streamlit as st
 
-from basededatos.manejarbasededatos import (
-    DEPARTAMENTOS_COLOMBIA,
-    agregar_certificacion_profesional,
-    crear_cliente,
-    crear_profesional,
-)
+from api_cliente import backend_post_json as _backend_post_json
+
+ALLOWED_CERT_MIME = {"image/png", "image/jpeg", "image/webp"}
+MAX_CERT_BYTES = 6 * 1024 * 1024
+
+
+def _sniff_image_mime(data: bytes) -> str | None:
+    if not data:
+        return None
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if len(data) >= 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _read_validated_cert(uploaded) -> tuple[bytes, str]:
+    raw = uploaded.getvalue() if uploaded is not None else b""
+    if not raw:
+        raise ValueError("El certificado está vacío.")
+    if len(raw) > MAX_CERT_BYTES:
+        raise ValueError("El certificado es demasiado grande. Máximo 6MB.")
+
+    declared = (getattr(uploaded, "type", None) or "").strip().lower()
+    sniffed = _sniff_image_mime(raw)
+    mime = sniffed or declared
+
+    if not mime or mime not in ALLOWED_CERT_MIME:
+        raise ValueError("Formato de certificado no permitido. Usa PNG, JPG/JPEG o WEBP.")
+
+    if sniffed and declared and sniffed != declared:
+        raise ValueError("El tipo de archivo no coincide con el contenido del certificado.")
+
+    return raw, mime
+
+from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
 
 def formulario_registro_profesional_ui():
     """
@@ -56,6 +89,8 @@ def formulario_registro_profesional_ui():
         if continuar:
             if not nombre_completo.strip() or not correo.strip() or not contrasena.strip():
                 st.error("Por favor, llena los campos obligatorios.")
+            elif len(contrasena) < 8:
+                st.error("La contraseña debe tener mínimo 8 caracteres.")
             elif contrasena != confirmar_contrasena:
                 st.error("Las contraseñas no coinciden.")
             else:
@@ -211,49 +246,71 @@ def formulario_registro_profesional_ui():
                 st.session_state.prof_reg_step = 1
                 st.rerun()
 
-            cert_archivos: list[tuple[bytes, str | None]] = []
+            cert_archivos: list[tuple[bytes, str]] = []
             for i in range(int(st.session_state.get("prof_cert_count") or 0)):
                 foto_obj = st.session_state.get(f"prof_cert_up_{i}")
                 if foto_obj is None:
                     continue
-                foto_bytes = foto_obj.getvalue()
-                if not foto_bytes:
+
+                raw = foto_obj.getvalue()
+                if not raw:
                     continue
-                foto_mime = getattr(foto_obj, "type", None)
+
+                try:
+                    foto_bytes, foto_mime = _read_validated_cert(foto_obj)
+                except ValueError as e:
+                    st.error(str(e))
+                    st.stop()
+
                 cert_archivos.append((foto_bytes, foto_mime))
 
             if not cert_archivos:
                 st.warning("Puedes continuar sin subir diploma/certificado por ahora. Luego podrás cargarlo para verificar tu perfil.")
 
+            payload = {
+                **(data or {}),
+                "especialidad": especialidad,
+                "universidad": universidad,
+                "experiencia": int(experiencia) if experiencia is not None else None,
+                "tarifa": float(tarifa) if tarifa is not None else None,
+                "metodologia": (metodologia or "").strip() or None,
+            }
+
             try:
-                profesional_id = crear_profesional(
-                    {
-                        **data,
-                        "especialidad": especialidad,
-                        "universidad": universidad,
-                        "certificacion": None,
-                        "experiencia": int(experiencia) if experiencia is not None else None,
-                        "tarifa": float(tarifa) if tarifa is not None else None,
-                        "metodologia": metodologia.strip(),
-                        "estado_verificacion": "pendiente",
-                    }
-                )
+                res = _backend_post_json("/auth/register_profesional", None, payload)
             except Exception:
                 st.session_state.logeado = False
                 st.session_state.rol = None
                 st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
             else:
-                certificados_guardados = 0
-                for foto_bytes, foto_mime in cert_archivos:
-                    agregar_certificacion_profesional(int(profesional_id), None, foto_bytes, foto_mime)
-                    certificados_guardados += 1
-
-                if cert_archivos and certificados_guardados <= 0:
-                    from basededatos.manejarbasededatos import eliminar_profesional
-
-                    eliminar_profesional(int(profesional_id))
-                    st.error("No se pudieron guardar tus certificados. Intenta de nuevo.")
+                if not (res or {}).get("ok"):
+                    st.session_state.logeado = False
+                    st.session_state.rol = None
+                    st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
                     st.stop()
+
+                token = str(res.get("token") or "")
+                profesional_id = int(res.get("user_id") or 0)
+
+                subidos = 0
+                fallos = 0
+                for foto_bytes, foto_mime in cert_archivos:
+                    try:
+                        _backend_post_json(
+                            "/me/certificaciones",
+                            {"token": token},
+                            {
+                                "titulo": None,
+                                "archivo_b64": base64.b64encode(foto_bytes).decode("ascii"),
+                                "archivo_mime": foto_mime,
+                            },
+                        )
+                        subidos += 1
+                    except Exception:
+                        fallos += 1
+
+                if fallos:
+                    st.warning("Tus certificados no se pudieron subir por completo. Podrás cargarlos luego desde tu perfil.")
 
                 st.session_state.prof_cert_count = 1
                 st.session_state.prof_reg_step = 1
@@ -262,9 +319,10 @@ def formulario_registro_profesional_ui():
                 st.session_state.pantalla = "foto_perfil"
                 st.session_state.rol = "profesional"
                 st.session_state.usuario_id = profesional_id
-                st.session_state.nombre_usuario = data.get("nombre")
-                st.session_state.email_usuario = data.get("email")
-                st.success(f"💪 ¡Perfil de {data.get('nombre')} creado con éxito!")
+                st.session_state.auth_token = token
+                st.session_state.nombre_usuario = payload.get("nombre")
+                st.session_state.email_usuario = payload.get("email")
+                st.success(f"💪 ¡Perfil de {payload.get('nombre')} creado con éxito!")
                 st.rerun()
 
 
@@ -331,37 +389,49 @@ def formulario_registro_cliente_ui():
         if boton_enviar_cli:
             if not nombre_completo.strip() or not correo.strip() or not contrasena.strip():
                 st.error("Por favor, llena los campos obligatorios del cliente.")
+            elif len(contrasena) < 8:
+                st.error("La contraseña debe tener mínimo 8 caracteres.")
             elif contrasena != confirmar_contrasena:
                 st.error("Las contraseñas no coinciden.")
             else:
+                payload = {
+                    "nombre": nombre_completo.strip(),
+                    "email": correo.strip().lower(),
+                    "password": contrasena,
+                    "departamento": depto_sel,
+                    "ciudad": ciudad_sel,
+                    "genero": genero,
+                    "edad": int(edad) if edad is not None else None,
+                    "altura": float(altura) if altura is not None else None,
+                    "peso": float(peso) if peso is not None else None,
+                    "patologia_familiar": patologia_familiar,
+                    "metodologia": (metodologia or "").strip() or None,
+                }
+
                 try:
-                    cliente_id = crear_cliente(
-                        {
-                            "nombre": nombre_completo.strip(),
-                            "email": correo.strip().lower(),
-                            "password": contrasena,
-                            "departamento": depto_sel,
-                            "ciudad": ciudad_sel,
-                            "genero": genero,
-                            "edad": int(edad) if edad is not None else None,
-                            "altura": float(altura) if altura is not None else None,
-                            "peso": float(peso) if peso is not None else None,
-                            "patologia_familiar": patologia_familiar,
-                            "metodologia": metodologia.strip(),
-                        }
-                    )
+                    res = _backend_post_json("/auth/register_cliente", None, payload)
                 except Exception:
                     st.session_state.logeado = False
                     st.session_state.rol = None
                     st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
                 else:
+                    if not (res or {}).get("ok"):
+                        st.session_state.logeado = False
+                        st.session_state.rol = None
+                        st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
+                        st.stop()
+
+                    token = str(res.get("token") or "")
+                    cliente_id = int(res.get("user_id") or 0)
+
                     st.session_state.logeado = False
                     st.session_state.pantalla = "foto_perfil"
                     st.session_state.rol = "cliente"
                     st.session_state.usuario_id = cliente_id
-                    st.session_state.nombre_usuario = nombre_completo.strip()
-                    st.session_state.email_usuario = correo.strip().lower()
-                    st.success(f"¡Perfil de {nombre_completo} creado con éxito!")
+                    st.session_state.auth_token = token
+                    st.session_state.nombre_usuario = payload.get("nombre")
+                    st.session_state.email_usuario = payload.get("email")
+                    st.success(f"¡Perfil de {payload.get('nombre')} creado con éxito!")
                     st.rerun()
 
 

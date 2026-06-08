@@ -1,10 +1,9 @@
 import base64
 import html
-import json
 import re
 from urllib.parse import quote, urlparse, parse_qs, urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+
+from api_cliente import backend_get_json as _backend_get_json, backend_post_json as _backend_post_json
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -12,13 +11,69 @@ from chat.realtime import render_inbox_listener, render_realtime_chat, render_ta
 from basededatos.manejarbasededatos import (
     DEPARTAMENTOS_COLOMBIA,
     actualizar_profesional,
+    agregar_certificacion_profesional,
     guardar_foto_profesional,
     listar_certificaciones_profesional,
     listar_clientes_de_profesional,
+    obtener_cliente_por_id,
 )
 
 
-BACKEND_API_BASE = "http://localhost:8001"
+ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+MAX_CERT_BYTES = 6 * 1024 * 1024
+
+
+def _sniff_image_mime(data: bytes) -> str | None:
+    if not data:
+        return None
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if len(data) >= 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _read_validated_image(uploaded) -> tuple[bytes, str]:
+    raw = uploaded.getvalue() if uploaded is not None else b""
+    if not raw:
+        raise ValueError("La imagen está vacía.")
+    if len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError("La imagen es demasiado grande. Máximo 3MB.")
+
+    declared = (getattr(uploaded, "type", None) or "").strip().lower()
+    sniffed = _sniff_image_mime(raw)
+    mime = sniffed or declared
+
+    if not mime or mime not in ALLOWED_IMAGE_MIME:
+        raise ValueError("Formato de imagen no permitido. Usa PNG, JPG/JPEG o WEBP.")
+
+    if sniffed and declared and sniffed != declared:
+        raise ValueError("El tipo de archivo no coincide con el contenido de la imagen.")
+
+    return raw, mime
+
+
+def _read_validated_cert(uploaded) -> tuple[bytes, str]:
+    raw = uploaded.getvalue() if uploaded is not None else b""
+    if not raw:
+        raise ValueError("El certificado está vacío.")
+    if len(raw) > MAX_CERT_BYTES:
+        raise ValueError("El certificado es demasiado grande. Máximo 6MB.")
+
+    declared = (getattr(uploaded, "type", None) or "").strip().lower()
+    sniffed = _sniff_image_mime(raw)
+    mime = sniffed or declared
+
+    if not mime or mime not in ALLOWED_IMAGE_MIME:
+        raise ValueError("Formato de certificado no permitido. Usa PNG, JPG/JPEG o WEBP.")
+
+    if sniffed and declared and sniffed != declared:
+        raise ValueError("El tipo de archivo no coincide con el contenido del certificado.")
+
+    return raw, mime
 
 
 def _h(value) -> str:
@@ -36,56 +91,36 @@ def _qp_get(key: str):
         return v[0] if isinstance(v, list) and v else None
 
 
-def _backend_url(path: str, params: dict | None = None) -> str:
-    base = (BACKEND_API_BASE or "").strip().rstrip("/")
-    url = base + (path or "")
-    if params:
-        qs = urlencode({k: v for k, v in params.items() if v is not None})
-        if qs:
-            url += "?" + qs
-    return url
-
-
-def _backend_get_json(path: str, params: dict | None = None):
-    url = _backend_url(path, params)
-    req = Request(url, method="GET", headers={"Accept": "application/json"})
+def _qp_all() -> dict:
     try:
-        with urlopen(req, timeout=12) as r:
-            raw = r.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except HTTPError as e:
-        try:
-            body = e.read().decode("utf-8", errors="ignore")
-        except Exception:
-            body = ""
-        raise RuntimeError(body or f"HTTP {getattr(e, 'code', 'error')}")
-    except URLError as e:
-        reason = getattr(e, "reason", None)
-        raise RuntimeError(str(reason) if reason else str(e))
+        raw = dict(st.query_params)
+    except Exception:
+        raw = st.experimental_get_query_params()
+    out = {}
+    for k, v in raw.items():
+        if isinstance(v, list):
+            if v:
+                out[k] = v[0]
+        elif v is not None:
+            out[k] = str(v)
+    return out
 
 
-def _backend_post_json(path: str, params: dict | None, payload: dict):
-    url = _backend_url(path, params)
-    data = json.dumps(payload).encode("utf-8")
-    req = Request(
-        url,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-    )
+def _qp_set(updates: dict):
+    params = _qp_all()
+    for k, v in (updates or {}).items():
+        if v is None:
+            params.pop(k, None)
+        else:
+            params[k] = str(v)
+
     try:
-        with urlopen(req, timeout=12) as r:
-            raw = r.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except HTTPError as e:
-        try:
-            body = e.read().decode("utf-8", errors="ignore")
-        except Exception:
-            body = ""
-        raise RuntimeError(body or f"HTTP {getattr(e, 'code', 'error')}")
-    except URLError as e:
-        reason = getattr(e, "reason", None)
-        raise RuntimeError(str(reason) if reason else str(e))
+        for k in list(st.query_params.keys()):
+            del st.query_params[k]
+        for k, v in params.items():
+            st.query_params[k] = v
+    except Exception:
+        st.experimental_set_query_params(**params)
 
 
 def _responsive_iframe(src: str, *, title: str = "Multimedia", aspect_ratio: float = 9 / 16):
@@ -207,16 +242,25 @@ def _multimedia_embed_html(url: str):
     return None
 
 
-def _avatar_profesional(nombre: str, foto, mime: str | None, *, size_px: int = 140, verificado: bool = False):
+def _avatar_profesional(
+    nombre: str,
+    foto,
+    mime: str | None,
+    *,
+    size_px: int = 140,
+    verificado: bool = False,
+    show_foto: bool = True,
+):
     nombre_safe = html.escape(nombre or "Profesional")
 
     src = None
-    if isinstance(foto, (bytes, bytearray)) and foto:
-        mime_final = (mime or "image/jpeg").strip() or "image/jpeg"
-        b64 = base64.b64encode(bytes(foto)).decode("ascii")
-        src = f"data:{mime_final};base64,{b64}"
-    elif isinstance(foto, str) and foto.strip():
-        src = foto.strip()
+    if show_foto:
+        if isinstance(foto, (bytes, bytearray)) and foto:
+            mime_final = (mime or "image/jpeg").strip() or "image/jpeg"
+            b64 = base64.b64encode(bytes(foto)).decode("ascii")
+            src = f"data:{mime_final};base64,{b64}"
+        elif isinstance(foto, str) and foto.strip():
+            src = foto.strip()
 
     iniciales = "?"
     if nombre and str(nombre).strip():
@@ -318,7 +362,256 @@ def _mostrar_campo(etiqueta: str, valor, *, uid: int = 0):
     st.text_input(f"{etiqueta}:", value=str(valor), disabled=True, key=f"pro_ro_{uid}_{safe}")
 
 
-def perfil_profesional_view(datos, *, editable: bool = False):
+def _render_profesional_edit_form(*, datos: dict, uid: int):
+    st.markdown("#### Foto de perfil")
+    foto_file = st.file_uploader(
+        "Subir foto",
+        type=["png", "jpg", "jpeg", "webp"],
+        key=f"pro_edit_up_{uid}",
+        label_visibility="collapsed",
+    )
+
+    if st.button(
+        "Guardar foto",
+        use_container_width=True,
+        disabled=(foto_file is None),
+        key=f"pro_edit_save_foto_{uid}",
+    ):
+        try:
+            foto_bytes, foto_mime = _read_validated_image(foto_file)
+        except ValueError as e:
+            st.error(str(e))
+        else:
+            try:
+                token = st.session_state.get("auth_token") or _qp_get("s")
+                if not token:
+                    raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
+                _backend_post_json(
+                    "/me/foto",
+                    {"token": str(token)},
+                    {
+                        "foto_b64": base64.b64encode(foto_bytes).decode("ascii"),
+                        "foto_mime": foto_mime,
+                    },
+                )
+            except Exception as e:
+                st.error(str(e))
+                st.stop()
+
+            st.success("Foto de perfil actualizada.")
+            st.rerun()
+
+    st.markdown("#### Subir diplomas / certificados")
+
+    token = st.session_state.get("auth_token") or _qp_get("s")
+    current = []
+    if token:
+        try:
+            res = _backend_get_json(
+                f"/profesionales/{int(uid)}/certificaciones",
+                {"token": str(token), "include_archivo": True},
+            )
+            current = (res or {}).get("items") or []
+        except Exception:
+            current = []
+
+    if current:
+        st.caption("Certificados ya cargados")
+        for c in current:
+            titulo = c.get("titulo") or "Certificado"
+            mime = c.get("archivo_mime") or "application/octet-stream"
+            archivo_b64 = c.get("archivo_b64")
+            archivo = None
+            if archivo_b64:
+                try:
+                    archivo = base64.b64decode(str(archivo_b64))
+                except Exception:
+                    archivo = None
+
+            if archivo and str(mime).startswith("image/"):
+                st.image(archivo, caption=titulo, use_container_width=True)
+            elif archivo:
+                st.download_button(
+                    f"Descargar: {titulo}",
+                    data=archivo,
+                    file_name=f"cert_{int(c.get('id') or 0)}",
+                    mime=mime,
+                    use_container_width=True,
+                    key=f"pro_cert_dl_{uid}_{int(c.get('id') or 0)}",
+                )
+
+    cert_files = st.file_uploader(
+        "Subir diplomas / certificados",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        key=f"pro_cert_upload_{uid}",
+        label_visibility="collapsed",
+    )
+
+    if st.button(
+        "Guardar certificados",
+        use_container_width=True,
+        disabled=not bool(cert_files),
+        key=f"pro_cert_save_{uid}",
+    ):
+        try:
+            saved = 0
+            token = st.session_state.get("auth_token") or _qp_get("s")
+            if not token:
+                raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
+            for f in (cert_files or []):
+                b, m = _read_validated_cert(f)
+                _backend_post_json(
+                    "/me/certificaciones",
+                    {"token": str(token)},
+                    {
+                        "titulo": None,
+                        "archivo_b64": base64.b64encode(b).decode("ascii"),
+                        "archivo_mime": m,
+                    },
+                )
+                saved += 1
+        except ValueError as e:
+            st.error(str(e))
+        else:
+            st.success(f"Certificados guardados: {int(saved)}")
+            st.rerun()
+
+    st.markdown("---")
+
+    deptos = list(DEPARTAMENTOS_COLOMBIA.keys())
+    depto_key = f"pro_edit_depto_{uid}"
+    ciudad_key = f"pro_edit_ciudad_{uid}"
+
+    current_depto = (datos.get("departamento") or "").strip()
+    if depto_key not in st.session_state:
+        st.session_state[depto_key] = current_depto if current_depto in deptos else (deptos[0] if deptos else "")
+
+    depto_sel = st.selectbox(
+        "Departamento de residencia",
+        deptos,
+        index=(deptos.index(st.session_state[depto_key]) if st.session_state[depto_key] in deptos else 0),
+        key=depto_key,
+    )
+
+    ciudades = DEPARTAMENTOS_COLOMBIA.get(depto_sel, [])
+    current_ciudad = (datos.get("ciudad") or "").strip()
+    if ciudad_key not in st.session_state:
+        st.session_state[ciudad_key] = current_ciudad if current_ciudad in ciudades else (ciudades[0] if ciudades else "")
+    if ciudades and st.session_state.get(ciudad_key) not in ciudades:
+        st.session_state[ciudad_key] = ciudades[0]
+
+    ciudad_sel = st.selectbox(
+        "Barrio / Ciudad",
+        ciudades,
+        key=ciudad_key,
+    )
+
+    nombre_key = f"pro_edit_nombre_{uid}"
+    tel_key = f"pro_edit_tel_{uid}"
+    gen_key = f"pro_edit_gen_{uid}"
+    esp_key = f"pro_edit_esp_{uid}"
+    uni_key = f"pro_edit_uni_{uid}"
+    exp_key = f"pro_edit_exp_{uid}"
+    tarifa_key = f"pro_edit_tarifa_{uid}"
+    tunit_key = f"pro_edit_tunit_{uid}"
+    metodo_key = f"pro_edit_metodo_{uid}"
+
+    if nombre_key not in st.session_state:
+        st.session_state[nombre_key] = datos.get("nombre") or ""
+    if tel_key not in st.session_state:
+        st.session_state[tel_key] = datos.get("telefono") or ""
+    if gen_key not in st.session_state:
+        st.session_state[gen_key] = (datos.get("genero") or "")
+    if esp_key not in st.session_state:
+        st.session_state[esp_key] = (datos.get("especialidad") or "")
+    if uni_key not in st.session_state:
+        st.session_state[uni_key] = (datos.get("universidad") or "")
+    if exp_key not in st.session_state:
+        st.session_state[exp_key] = int(datos.get("experiencia") or 0)
+    if tarifa_key not in st.session_state:
+        st.session_state[tarifa_key] = _format_cop(datos.get("tarifa") or 0)
+    if tunit_key not in st.session_state:
+        st.session_state[tunit_key] = (datos.get("tarifa_unidad") or "sesion")
+    if metodo_key not in st.session_state:
+        st.session_state[metodo_key] = (datos.get("metodologia") or "")
+
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        nombre_new = st.text_input("Nombre completo", key=nombre_key)
+        telefono_new = st.text_input("Teléfono", key=tel_key)
+        genero_new = st.selectbox(
+            "Género",
+            ["", "Masculino", "Femenino", "Otro"],
+            index=["", "Masculino", "Femenino", "Otro"].index(
+                st.session_state.get(gen_key) if st.session_state.get(gen_key) in ["", "Masculino", "Femenino", "Otro"] else ""
+            ),
+            key=gen_key,
+        )
+        especialidad_new = st.text_input("Especialidad", key=esp_key)
+        universidad_new = st.text_input("Universidad", key=uni_key)
+
+    with col_e2:
+        experiencia_new = st.number_input("Años de Experiencia", min_value=0, max_value=60, step=1, key=exp_key)
+        tarifa_txt = st.text_input("Precio (COP)", placeholder="Ej: 300.000", key=tarifa_key)
+        tarifa_unidad_ui = st.selectbox(
+            "Periodicidad",
+            ["sesion", "semana", "mes"],
+            index=["sesion", "semana", "mes"].index(
+                st.session_state.get(tunit_key) if st.session_state.get(tunit_key) in ["sesion", "semana", "mes"] else "sesion"
+            ),
+            key=tunit_key,
+        )
+
+    metodologia_new = st.text_area("Descripción / Metodología", height=140, key=metodo_key)
+
+    if st.button("Guardar cambios", use_container_width=True, key=f"pro_edit_save_{uid}"):
+        tarifa_val = None
+        digits = "".join(ch for ch in str(tarifa_txt or "") if ch.isdigit())
+        if digits:
+            try:
+                tarifa_val = float(int(digits))
+            except Exception:
+                tarifa_val = None
+
+        cambios = {
+            "nombre": (nombre_new or "").strip() or None,
+            "telefono": (telefono_new or "").strip() or None,
+            "departamento": depto_sel,
+            "ciudad": ciudad_sel,
+            "genero": (genero_new or "").strip() or None,
+            "especialidad": (especialidad_new or "").strip() or None,
+            "universidad": (universidad_new or "").strip() or None,
+            "experiencia": int(experiencia_new) if experiencia_new is not None else None,
+            "tarifa": tarifa_val,
+            "tarifa_unidad": (tarifa_unidad_ui or "sesion").strip().lower(),
+            "metodologia": (metodologia_new or "").strip() or None,
+        }
+        try:
+            token = st.session_state.get("auth_token") or _qp_get("s")
+            if not token:
+                raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
+            res = _backend_post_json("/me/profile", {"token": str(token)}, {"cambios": cambios})
+        except Exception as e:
+            st.error(str(e))
+        else:
+            if (res or {}).get("ok"):
+                st.success("Perfil actualizado.")
+                st.rerun()
+            else:
+                st.warning("No se pudieron aplicar cambios.")
+
+
+
+def configuraciones_profesional_view(datos: dict):
+    uid = int((datos or {}).get("id") or 0)
+    if not uid:
+        st.info("No se pudo cargar el perfil profesional.")
+        return
+    _render_profesional_edit_form(datos=dict(datos), uid=uid)
+
+
+def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = False):
     """Muestra la vista detallada del profesional para los clientes"""
     prof_id = datos.get("id")
     nombre = datos.get("nombre") or "Profesional"
@@ -328,167 +621,19 @@ def perfil_profesional_view(datos, *, editable: bool = False):
 
     foto = datos.get("foto")
     mime = datos.get("foto_mime")
-    st.markdown(_avatar_profesional(nombre, foto, mime, size_px=170, verificado=verificado), unsafe_allow_html=True)
+    st.markdown(
+        _avatar_profesional(
+            nombre,
+            foto,
+            mime,
+            size_px=170,
+            verificado=verificado,
+            show_foto=True,
+        ),
+        unsafe_allow_html=True,
+    )
 
     uid = int(prof_id or 0)
-
-    if editable and uid:
-        edit_key = f"pro_edit_open_{uid}"
-        col_btn_l, col_btn, col_btn_r = st.columns([1, 1.2, 1])
-        with col_btn:
-            if st.button(
-                "Editar perfil",
-                use_container_width=True,
-                key=f"btn_edit_prof_{uid}",
-            ):
-                st.session_state[edit_key] = not bool(st.session_state.get(edit_key))
-
-        if st.session_state.get(edit_key):
-            st.markdown("#### Foto de perfil")
-            tab_f = st.tabs(["Subir foto"])[0]
-            foto_file = None
-            with tab_f:
-                up = st.file_uploader(
-                    "Subir foto",
-                    type=["png", "jpg", "jpeg", "webp"],
-                    key=f"pro_edit_up_{uid}",
-                )
-                if up is not None:
-                    foto_file = up
-
-            if st.button("Guardar foto", use_container_width=True, disabled=(foto_file is None), key=f"pro_edit_save_foto_{uid}"):
-                foto_bytes = foto_file.getvalue() if foto_file is not None else None
-                foto_mime = getattr(foto_file, "type", None)
-                if foto_bytes:
-                    guardar_foto_profesional(uid, foto_bytes, foto_mime)
-                    st.success("Foto de perfil actualizada.")
-                    st.rerun()
-
-            st.markdown("---")
-
-            deptos = list(DEPARTAMENTOS_COLOMBIA.keys())
-            depto_key = f"pro_edit_depto_{uid}"
-            ciudad_key = f"pro_edit_ciudad_{uid}"
-
-            current_depto = (datos.get("departamento") or "").strip()
-            if depto_key not in st.session_state:
-                st.session_state[depto_key] = current_depto if current_depto in deptos else (deptos[0] if deptos else "")
-
-            depto_sel = st.selectbox(
-                "Departamento de residencia",
-                deptos,
-                index=(deptos.index(st.session_state[depto_key]) if st.session_state[depto_key] in deptos else 0),
-                key=depto_key,
-            )
-
-            ciudades = DEPARTAMENTOS_COLOMBIA.get(depto_sel, [])
-            current_ciudad = (datos.get("ciudad") or "").strip()
-            if ciudad_key not in st.session_state:
-                st.session_state[ciudad_key] = current_ciudad if current_ciudad in ciudades else (ciudades[0] if ciudades else "")
-            if ciudades and st.session_state.get(ciudad_key) not in ciudades:
-                st.session_state[ciudad_key] = ciudades[0]
-
-            ciudad_sel = st.selectbox(
-                "Barrio / Ciudad",
-                ciudades,
-                key=ciudad_key,
-            )
-
-            nombre_key = f"pro_edit_nombre_{uid}"
-            tel_key = f"pro_edit_tel_{uid}"
-            gen_key = f"pro_edit_gen_{uid}"
-            esp_key = f"pro_edit_esp_{uid}"
-            uni_key = f"pro_edit_uni_{uid}"
-            exp_key = f"pro_edit_exp_{uid}"
-            tarifa_key = f"pro_edit_tarifa_{uid}"
-            tunit_key = f"pro_edit_tunit_{uid}"
-            metodo_key = f"pro_edit_metodo_{uid}"
-
-            if nombre_key not in st.session_state:
-                st.session_state[nombre_key] = datos.get("nombre") or ""
-            if tel_key not in st.session_state:
-                st.session_state[tel_key] = datos.get("telefono") or ""
-            if gen_key not in st.session_state:
-                st.session_state[gen_key] = (datos.get("genero") or "")
-            if esp_key not in st.session_state:
-                st.session_state[esp_key] = (datos.get("especialidad") or "")
-            if uni_key not in st.session_state:
-                st.session_state[uni_key] = (datos.get("universidad") or "")
-            if exp_key not in st.session_state:
-                st.session_state[exp_key] = int(datos.get("experiencia") or 0)
-            if tarifa_key not in st.session_state:
-                st.session_state[tarifa_key] = _format_cop(datos.get("tarifa") or 0)
-            if tunit_key not in st.session_state:
-                st.session_state[tunit_key] = (datos.get("tarifa_unidad") or "sesion")
-            if metodo_key not in st.session_state:
-                st.session_state[metodo_key] = (datos.get("metodologia") or "")
-
-            col_e1, col_e2 = st.columns(2)
-            with col_e1:
-                nombre_new = st.text_input("Nombre completo", key=nombre_key)
-                telefono_new = st.text_input("Teléfono", key=tel_key)
-                genero_new = st.selectbox(
-                    "Género",
-                    ["", "Masculino", "Femenino", "Otro"],
-                    index=["", "Masculino", "Femenino", "Otro"].index(st.session_state.get(gen_key) if st.session_state.get(gen_key) in ["", "Masculino", "Femenino", "Otro"] else ""),
-                    key=gen_key,
-                )
-                especialidad_new = st.text_input("Especialidad", key=esp_key)
-                universidad_new = st.text_input("Universidad", key=uni_key)
-
-            with col_e2:
-                experiencia_new = st.number_input("Años de Experiencia", min_value=0, max_value=60, step=1, key=exp_key)
-                tarifa_txt = st.text_input("Precio (COP)", placeholder="Ej: 300.000", key=tarifa_key)
-                tarifa_unidad_ui = st.selectbox(
-                    "Periodicidad",
-                    ["sesion", "semana", "mes"],
-                    index=["sesion", "semana", "mes"].index(
-                        st.session_state.get(tunit_key) if st.session_state.get(tunit_key) in ["sesion", "semana", "mes"] else "sesion"
-                    ),
-                    key=tunit_key,
-                )
-
-            metodologia_new = st.text_area("Descripción / Metodología", height=140, key=metodo_key)
-
-            col_save, col_cancel = st.columns(2)
-            with col_save:
-                if st.button("Guardar cambios", use_container_width=True, key=f"pro_edit_save_{uid}"):
-                    tarifa_val = None
-                    digits = "".join(ch for ch in str(tarifa_txt or "") if ch.isdigit())
-                    if digits:
-                        try:
-                            tarifa_val = float(int(digits))
-                        except Exception:
-                            tarifa_val = None
-
-                    ok = actualizar_profesional(
-                        uid,
-                        {
-                            "nombre": (nombre_new or "").strip() or None,
-                            "telefono": (telefono_new or "").strip() or None,
-                            "departamento": depto_sel,
-                            "ciudad": ciudad_sel,
-                            "genero": (genero_new or "").strip() or None,
-                            "especialidad": (especialidad_new or "").strip() or None,
-                            "universidad": (universidad_new or "").strip() or None,
-                            "experiencia": int(experiencia_new) if experiencia_new is not None else None,
-                            "tarifa": tarifa_val,
-                            "tarifa_unidad": (tarifa_unidad_ui or "sesion").strip().lower(),
-                            "metodologia": (metodologia_new or "").strip() or None,
-                        },
-                    )
-                    if ok:
-                        st.session_state[edit_key] = False
-                        st.success("Perfil actualizado.")
-                        st.rerun()
-                    else:
-                        st.warning("No se pudieron aplicar cambios.")
-
-            with col_cancel:
-                if st.button("Cancelar", use_container_width=True, key=f"pro_edit_cancel_{uid}"):
-                    st.session_state[edit_key] = False
-                    st.rerun()
-
     st.markdown(
         """
         <style>
@@ -531,11 +676,58 @@ def perfil_profesional_view(datos, *, editable: bool = False):
         unsafe_allow_html=True,
     )
 
-    if editable and uid:
+    if (owner or editable) and uid:
         tab_info, tab_media, tab_msg = st.tabs(["Información", "Multimedia", "Mensaje"])
         token_badge = st.session_state.get("auth_token") or _qp_get("s")
         if token_badge:
             render_tab_badge_listener(token=str(token_badge), tab_text="Mensaje")
+
+        open_cid = _qp_get("open_cli")
+        if open_cid:
+            try:
+                st.session_state.selected_cliente_chat_id = int(open_cid)
+            except Exception:
+                pass
+
+            components.html(
+                """
+                <script>
+                (function () {
+                  function findAndClickMensajeTab() {
+                    try {
+                      const d = window.parent?.document || document;
+                      const tabs = d.querySelectorAll('div[data-testid="stTabs"] [data-baseweb="tab"]');
+                      for (const t of tabs) {
+                        const txt = (t.textContent || '').trim();
+                        if (!txt) continue;
+                        if (txt === 'Mensaje' || txt.startsWith('Mensaje')) {
+                          t.click();
+                          break;
+                        }
+                      }
+                    } catch (e) {}
+                  }
+
+                  function clearOpenCliParam() {
+                    try {
+                      const w = window.parent || window;
+                      const u = new URL(w.location.href);
+                      if (u.searchParams.has('open_cli')) {
+                        u.searchParams.delete('open_cli');
+                        w.history.replaceState({}, '', u.toString());
+                      }
+                    } catch (e) {}
+                  }
+
+                  setTimeout(function () {
+                    findAndClickMensajeTab();
+                    clearOpenCliParam();
+                  }, 50);
+                })();
+                </script>
+                """,
+                height=0,
+            )
     else:
         tab_info, tab_media = st.tabs(["Información", "Multimedia"])
         tab_msg = None
@@ -607,12 +799,40 @@ def perfil_profesional_view(datos, *, editable: bool = False):
         else:
             st.info("Este profesional no tiene certificados cargados.")
 
-    with tab_media:
-        if not (editable and int(prof_id or 0)):
-            st.empty()
-        else:
-            uid = int(prof_id or 0)
+        if not (owner or editable):
+            st.markdown("---")
+            if st.button("Hablar con este profesional", use_container_width=True, key=f"cli_hablar_prof_{uid}"):
+                st.session_state.selected_profesional_id = int(uid)
+                st.session_state.submenu_actual = "Mensajes"
+                _qp_set({"tab": "Mensajes", "prof": None})
+                st.rerun()
 
+    with tab_media:
+        uid = int(prof_id or 0)
+        if not uid:
+            st.empty()
+        elif not (owner or editable):
+            urls = [
+                ("TikTok", (datos.get("url_tiktok") or "").strip()),
+                ("Instagram", (datos.get("url_instagram") or "").strip()),
+                ("Facebook", (datos.get("url_facebook") or "").strip()),
+                ("YouTube", (datos.get("url_youtube") or "").strip()),
+            ]
+
+            any_ok = False
+            for nombre, url in urls:
+                if not url:
+                    continue
+                html_embed = _multimedia_embed_html(url)
+                if not html_embed:
+                    continue
+                any_ok = True
+                st.markdown(f"### {nombre}")
+                components.html(html_embed, height=640, scrolling=False)
+
+            if not any_ok:
+                st.info("Este profesional no tiene videos públicos cargados.")
+        else:
             st.warning(
                 "Aviso Importante: Para garantizar una visualización correcta, asegúrate de que tus videos (TikTok, Instagram, Facebook o YouTube) estén configurados como PÚBLICOS. Los enlaces a contenido privado no se visualizarán."
             )
@@ -694,64 +914,170 @@ def perfil_profesional_view(datos, *, editable: bool = False):
             )
 
             if st.button("Guardar enlaces", use_container_width=True, key=f"pro_media_save_{uid}"):
-                ok = actualizar_profesional(
-                    uid,
-                    {
-                        "url_tiktok": (st.session_state.get(k_tt) or "").strip() or None,
-                        "url_instagram": (st.session_state.get(k_ig) or "").strip() or None,
-                        "url_facebook": (st.session_state.get(k_fb) or "").strip() or None,
-                        "url_youtube": (st.session_state.get(k_yt) or "").strip() or None,
-                    },
-                )
-                if ok:
-                    st.success("Enlaces guardados.")
-                    st.rerun()
+                cambios = {
+                    "url_tiktok": (st.session_state.get(k_tt) or "").strip() or None,
+                    "url_instagram": (st.session_state.get(k_ig) or "").strip() or None,
+                    "url_facebook": (st.session_state.get(k_fb) or "").strip() or None,
+                    "url_youtube": (st.session_state.get(k_yt) or "").strip() or None,
+                }
+                try:
+                    token = st.session_state.get("auth_token") or _qp_get("s")
+                    if not token:
+                        raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
+                    res = _backend_post_json("/me/profile", {"token": str(token)}, {"cambios": cambios})
+                except Exception as e:
+                    st.error(str(e))
                 else:
-                    st.warning("No se pudieron guardar los enlaces.")
+                    if (res or {}).get("ok"):
+                        st.success("Enlaces guardados.")
+                        st.rerun()
+                    else:
+                        st.warning("No se pudieron guardar los enlaces.")
 
     if tab_msg is not None:
         with tab_msg:
-            st.subheader("Mensajes")
-            st.caption("Aquí te llegarán los mensajes que te escriban los clientes.")
-
             token_chat = st.session_state.get("auth_token") or _qp_get("s")
             if not token_chat:
                 st.info("Inicia sesión para ver tus mensajes.")
             else:
+
+                def _fmt_ts(v):
+                    if not v:
+                        return ""
+                    s = str(v).replace("T", " ")
+                    return s[:16] if len(s) >= 16 else s
+
+                def _preview(t):
+                    t = (t or "").strip().replace("\n", " ")
+                    if len(t) > 56:
+                        t = t[:56].rstrip() + "…"
+                    return t
+
+                def _initials(nombre: str) -> str:
+                    parts = [p for p in (nombre or "").strip().split() if p]
+                    return ("".join([p[0] for p in parts[:2]]) or "?").upper()
+
+                def _href_open_cli(cliente_id: int) -> str:
+                    params = _qp_all()
+                    params["tab"] = params.get("tab") or "perfil"
+                    params["open_cli"] = str(int(cliente_id))
+                    qs = urlencode({k: v for k, v in params.items() if v is not None})
+                    return "?" + qs
+
+                st.markdown(
+                    """
+                    <style>
+                    .axon-inbox {max-width: 780px; margin: 0 auto;}
+                    .axon-inbox a{ text-decoration: none !important; }
+                    .axon-inbox-item{
+                      display:flex; align-items:center; gap:14px;
+                      padding: 12px 10px;
+                      border-radius: 16px;
+                      border: 1px solid rgba(15,23,42,.06);
+                      background: rgba(255,255,255,.92);
+                      box-shadow: 0 10px 24px rgba(15,23,42,.06);
+                    }
+                    .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
+                    .axon-inbox-avatar{
+                      width:56px; height:56px; border-radius:999px; overflow:hidden;
+                      display:flex; align-items:center; justify-content:center;
+                      background:#e2e8f0;
+                      border: 3px solid rgba(148,163,184,.55);
+                      flex: 0 0 56px;
+                    }
+                    .axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
+                    .axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+                    .axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
+                    .axon-inbox-body{ flex: 1 1 auto; min-width: 0; }
+                    .axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
+                    .axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                    .axon-inbox-meta{ flex: 0 0 auto; text-align:right; min-width:72px; }
+                    .axon-inbox-time{ color:#64748b; font-size:12px; }
+                    .axon-inbox-badge{
+                      display:inline-flex; min-width:22px; height:22px; padding:0 7px;
+                      border-radius:999px; background:#ef4444; color:#fff;
+                      align-items:center; justify-content:center;
+                      font-weight:900; font-size:12px; margin-top:6px;
+                    }
+                    .axon-inbox-sep{ height:10px; }
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
                 try:
-                    inbox = _backend_get_json(
-                        "/inbox",
-                        {"token": str(token_chat), "limit": 50},
-                    )
+                    inbox = _backend_get_json("/inbox", {"token": str(token_chat), "limit": 60})
                     convs = inbox.get("items") or []
                 except Exception as e:
-                    st.error(f"No se pudo cargar tu bandeja: {e}")
+                    st.error(f"No se pudo cargar tus conversaciones: {e}")
                     convs = []
 
-                if not convs:
+                open_cid = _qp_get("open_cli")
+                if open_cid:
+                    try:
+                        st.session_state.selected_cliente_chat_id = int(open_cid)
+                    except Exception:
+                        pass
+
+                cid = st.session_state.get("selected_cliente_chat_id")
+
+                if cid is None:
                     render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(uid))
-                    st.info("Aún no tienes mensajes de clientes.")
+                    st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
+                    if not convs:
+                        st.info("Aún no tienes conversaciones.")
+                    else:
+                        for it in convs:
+                            cli_id = int(it.get("cliente_id") or 0)
+                            nombre = (it.get("nombre") or "Cliente").strip() or "Cliente"
+                            last_texto = _preview(it.get("last_texto"))
+                            last_at = _fmt_ts(it.get("last_at"))
+                            unread = int(it.get("unread") or 0)
+
+                            cli_row = obtener_cliente_por_id(int(cli_id)) or {}
+                            foto = cli_row.get("foto")
+                            mime = cli_row.get("foto_mime")
+                            src = None
+                            if isinstance(foto, (bytes, bytearray)) and foto:
+                                try:
+                                    b64 = base64.b64encode(bytes(foto)).decode("ascii")
+                                    mt = (mime or "image/jpeg").strip() or "image/jpeg"
+                                    src = f"data:{mt};base64,{b64}"
+                                except Exception:
+                                    src = None
+
+                            avatar_html = (
+                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(_initials(nombre))}</div>"
+                            )
+                            badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
+                            item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"
+
+                            st.markdown(
+                                f"""
+                                <a class="{item_cls}" href="{_h(_href_open_cli(cli_id))}" target="_self" onclick="event.preventDefault(); window.parent.location.href=this.href;">
+                                  <div class="axon-inbox-avatar">{avatar_html}</div>
+                                  <div class="axon-inbox-body">
+                                    <div class="axon-inbox-title">{_h(nombre)}</div>
+                                    <div class="axon-inbox-sub">{_h(last_texto or '—')}</div>
+                                  </div>
+                                  <div class="axon-inbox-meta">
+                                    <div class="axon-inbox-time">{_h(last_at)}</div>
+                                    {badge_html}
+                                  </div>
+                                </a>
+                                <div class="axon-inbox-sep"></div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    options = []
-                    id_map = {}
-                    name_map = {}
-                    for r in convs:
-                        cid = int(r.get("cliente_id") or 0)
-                        nombre_cli = (r.get("nombre") or "Cliente").strip() or "Cliente"
-                        last_at = (r.get("last_at") or "")
-                        last_at = last_at.replace("T", " ")[:19] if last_at else ""
-                        label = f"{nombre_cli} (ID {cid})"
-                        if last_at:
-                            label = f"{label} • {last_at}"
-                        options.append(label)
-                        id_map[label] = cid
-                        name_map[label] = nombre_cli
+                    cid = int(cid)
 
-                    sel = st.selectbox("Selecciona un cliente", options, key=f"pro_msg_sel_{uid}")
-                    cid = int(id_map.get(sel) or 0)
-                    cliente_nombre = name_map.get(sel) or "Cliente"
-
-                    st.markdown(f"### {cliente_nombre}")
+                    if st.button("← Volver", key=f"chat_back_inbox_properfil_{uid}_{cid}"):
+                        st.session_state.selected_cliente_chat_id = None
+                        _qp_set({"open_cli": None})
+                        st.rerun()
 
                     render_realtime_chat(
                         token=str(token_chat),

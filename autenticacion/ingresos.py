@@ -1,6 +1,7 @@
 import streamlit as st
 from pathlib import Path
-from basededatos.manejarbasededatos import autenticar_usuario, crear_sesion
+
+from api_cliente import backend_post_json as _backend_post_json
 
 _ESTILO_DIR = Path(__file__).resolve().parents[1] / "estilo"
 
@@ -14,54 +15,42 @@ def _leer_estilo_archivo(nombre_archivo: str) -> str:
 
 def _procesar_login(correo: str, password: str) -> bool:
     correo = (correo or "").strip().lower()
-    resultado = autenticar_usuario(correo, password or "")
-    if resultado:
-        rol = resultado["rol"]
-        user_id = int(resultado["id"])
-        if rol == "profesional":
-            from basededatos.manejarbasededatos import obtener_profesional_por_id
+    try:
+        res = _backend_post_json(
+            "/auth/login",
+            None,
+            {"email": correo, "password": password or ""},
+        )
+    except Exception as e:
+        st.error(str(e))
+        return False
 
-            user = obtener_profesional_por_id(user_id)
-            estado = (user or {}).get("estado_verificacion")
-            verificado = (estado or "pendiente").strip().lower() == "verificado"
+    if not (res or {}).get("ok"):
+        st.error("Usuario o contraseña incorrectos")
+        return False
 
-            token = crear_sesion(rol, user_id)
-            st.session_state.auth_token = token
-            st.session_state.logeado = True
-            st.session_state.rol = rol
-            st.session_state.usuario_id = user_id
-            st.session_state.nombre_usuario = (user or {}).get("nombre")
-            st.session_state.foto_usuario = (user or {}).get("foto")
-            st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
-            st.session_state.prof_en_verificacion = not verificado
-            st.session_state.pantalla = "login"
-            st.session_state.submenu_actual = "Inicio" if verificado else "perfil"
-            st.rerun()
-        else:
-            from basededatos.manejarbasededatos import obtener_cliente_por_id
+    rol = str(res.get("rol") or "")
+    user_id = int(res.get("user_id") or 0)
+    token = str(res.get("token") or "")
+    profile = (res or {}).get("profile") or {}
 
-            user = obtener_cliente_por_id(user_id)
-            token = crear_sesion(rol, user_id)
-            st.session_state.auth_token = token
-            st.session_state.logeado = True
-            st.session_state.rol = rol
-            st.session_state.usuario_id = user_id
-            st.session_state.nombre_usuario = (user or {}).get("nombre")
-            st.session_state.foto_usuario = (user or {}).get("foto")
-            st.session_state.foto_usuario_mime = (user or {}).get("foto_mime")
-            st.session_state.pantalla = "login"
-            st.session_state.submenu_actual = "Inicio"
-            st.rerun()
+    st.session_state.auth_token = token
+    st.session_state.logeado = True
+    st.session_state.rol = rol
+    st.session_state.usuario_id = user_id
+    st.session_state.nombre_usuario = profile.get("nombre")
+    st.session_state.foto_usuario = None
+    st.session_state.foto_usuario_mime = profile.get("foto_mime")
 
-    if correo.lower() == "test@test.com" and password == "1234":
-        st.session_state.logeado = True
-        st.session_state.pantalla = "login"
-        st.session_state.rol = st.session_state.get("rol") or "cliente"
-        st.session_state.nombre_usuario = correo.split("@", 1)[0] if "@" in correo else correo
-        st.rerun()
+    if rol == "profesional":
+        st.session_state.prof_en_verificacion = bool(res.get("prof_en_verificacion"))
+        st.session_state.submenu_actual = "perfil" if st.session_state.prof_en_verificacion else "Inicio"
+    else:
+        st.session_state.prof_en_verificacion = False
+        st.session_state.submenu_actual = "Inicio"
 
-    st.error("Usuario o contraseña incorrectos")
-    return False
+    st.session_state.pantalla = "login"
+    st.rerun()
 
 
 def mostrar_interfaz_login():

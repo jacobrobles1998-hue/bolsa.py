@@ -1,6 +1,46 @@
-import streamlit as st
 import base64
 import html
+
+import streamlit as st
+
+from api_cliente import backend_post_json as _backend_post_json
+from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
+
+
+ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+
+
+def _sniff_image_mime(data: bytes) -> str | None:
+    if not data:
+        return None
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:12].startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _read_validated_image(uploaded) -> tuple[bytes, str]:
+    raw = uploaded.getvalue() if uploaded is not None else b""
+    if not raw:
+        raise ValueError("La imagen está vacía.")
+    if len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError("La imagen es demasiado grande. Máximo 3MB.")
+
+    declared = (getattr(uploaded, "type", None) or "").strip().lower()
+    sniffed = _sniff_image_mime(raw)
+    mime = sniffed or declared
+
+    if not mime or mime not in ALLOWED_IMAGE_MIME:
+        raise ValueError("Formato de imagen no permitido. Usa PNG, JPG/JPEG o WEBP.")
+
+    if sniffed and declared and sniffed != declared:
+        raise ValueError("El tipo de archivo no coincide con el contenido de la imagen.")
+
+    return raw, mime
 
 
 def _mostrar_campo(etiqueta: str, valor, unidad: str = "", *, uid: int = 0):
@@ -118,7 +158,7 @@ def perfil_cliente_view(datos_usuario, *, mostrar_foto: bool = True):
     else:
         st.markdown(f"### {nombre}")
 
-    st.caption("Estos son los datos que registraste. Solo lectura.")
+    st.caption("Perfil del cliente")
 
     st.markdown(
         """
@@ -169,3 +209,146 @@ def perfil_cliente_view(datos_usuario, *, mostrar_foto: bool = True):
             height=120,
             key=f"cli_ro_{uid}_metodologia",
         )
+
+
+def configuraciones_cliente_view(datos_usuario):
+    uid = int(datos_usuario.get("id") or 0)
+
+    st.subheader("Foto de perfil")
+    up = st.file_uploader(
+        "Subir foto",
+        type=["png", "jpg", "jpeg", "webp"],
+        key=f"cli_cfg_foto_{uid}",
+        label_visibility="collapsed",
+    )
+    if st.button(
+        "Guardar foto",
+        use_container_width=True,
+        disabled=(up is None),
+        key=f"cli_cfg_foto_save_{uid}",
+    ):
+        try:
+            foto_bytes, foto_mime = _read_validated_image(up)
+            token = st.session_state.get("auth_token")
+            if not token:
+                raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
+            _backend_post_json(
+                "/me/foto",
+                {"token": str(token)},
+                {
+                    "foto_b64": base64.b64encode(foto_bytes).decode("ascii"),
+                    "foto_mime": foto_mime,
+                },
+            )
+        except ValueError as e:
+            st.error(str(e))
+        except Exception as e:
+            st.error(str(e))
+        else:
+            st.success("Foto de perfil actualizada.")
+            st.rerun()
+
+    st.markdown("---")
+    st.subheader("Datos del perfil")
+
+    nombre_new = st.text_input(
+        "Nombre completo",
+        value=str(datos_usuario.get("nombre") or ""),
+        key=f"cli_cfg_nombre_{uid}",
+    )
+    telefono_new = st.text_input(
+        "Teléfono",
+        value=str(datos_usuario.get("telefono") or ""),
+        key=f"cli_cfg_tel_{uid}",
+    )
+
+    depto_vals = list(DEPARTAMENTOS_COLOMBIA) if DEPARTAMENTOS_COLOMBIA else []
+    depto_curr = (datos_usuario.get("departamento") or "").strip()
+    depto_idx = depto_vals.index(depto_curr) if depto_curr in depto_vals else 0
+    depto_sel = st.selectbox(
+        "Departamento de residencia",
+        options=depto_vals if depto_vals else [depto_curr or ""],
+        index=depto_idx if depto_vals else 0,
+        key=f"cli_cfg_depto_{uid}",
+    )
+
+    ciudad_new = st.text_input(
+        "Ciudad",
+        value=str(datos_usuario.get("ciudad") or ""),
+        key=f"cli_cfg_ciudad_{uid}",
+    )
+
+    genero_new = st.text_input(
+        "Género",
+        value=str(datos_usuario.get("genero") or ""),
+        key=f"cli_cfg_genero_{uid}",
+    )
+
+    edad_new = st.number_input(
+        "Edad (Años)",
+        min_value=0,
+        max_value=120,
+        value=int(datos_usuario.get("edad") or 0),
+        step=1,
+        key=f"cli_cfg_edad_{uid}",
+    )
+
+    altura_new = st.number_input(
+        "Altura (Metros)",
+        min_value=0.0,
+        max_value=3.0,
+        value=float(datos_usuario.get("altura") or 0.0),
+        step=0.01,
+        format="%.2f",
+        key=f"cli_cfg_altura_{uid}",
+    )
+
+    peso_new = st.number_input(
+        "Peso actual (Kg)",
+        min_value=0.0,
+        max_value=400.0,
+        value=float(datos_usuario.get("peso") or 0.0),
+        step=0.1,
+        format="%.1f",
+        key=f"cli_cfg_peso_{uid}",
+    )
+
+    patologia_new = st.text_input(
+        "Patología familiar",
+        value=str(datos_usuario.get("patologia_familiar") or ""),
+        key=f"cli_cfg_pat_{uid}",
+    )
+
+    metodologia_new = st.text_area(
+        "Condiciones o notas",
+        value=str(datos_usuario.get("metodologia") or ""),
+        height=120,
+        key=f"cli_cfg_met_{uid}",
+    )
+
+    if st.button("Guardar cambios", use_container_width=True, key=f"cli_cfg_save_{uid}"):
+        cambios = {
+            "nombre": (nombre_new or "").strip() or None,
+            "telefono": (telefono_new or "").strip() or None,
+            "departamento": (depto_sel or "").strip() or None,
+            "ciudad": (ciudad_new or "").strip() or None,
+            "genero": (genero_new or "").strip() or None,
+            "edad": int(edad_new) if edad_new is not None else None,
+            "altura": float(altura_new) if altura_new is not None else None,
+            "peso": float(peso_new) if peso_new is not None else None,
+            "patologia_familiar": (patologia_new or "").strip() or None,
+            "metodologia": (metodologia_new or "").strip() or None,
+        }
+        try:
+            token = st.session_state.get("auth_token")
+            if not token:
+                raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
+            res = _backend_post_json("/me/profile", {"token": str(token)}, {"cambios": cambios})
+        except Exception as e:
+            st.error(str(e))
+        else:
+            if (res or {}).get("ok"):
+                st.success("Perfil actualizado.")
+                st.rerun()
+            else:
+                st.warning("No se pudieron aplicar cambios.")
