@@ -39,6 +39,7 @@ from basededatos.manejarbasededatos import (
     crear_contrato,
     crear_profesional,
     crear_sesion,
+    crear_tablas_iniciales,
     eliminar_sesion,
     guardar_foto_cliente,
     guardar_foto_profesional,
@@ -65,6 +66,7 @@ api.add_middleware(
 @api.on_event("startup")
 async def _startup():
     await init_db()
+    crear_tablas_iniciales()
 
 
 MAX_HISTORY_LIMIT = 200
@@ -472,15 +474,10 @@ async def get_certificaciones_profesional(
     token: str | None = Query(default=None),
     include_archivo: bool = Query(default=False),
 ):
-    user = await _auth_from_headers_or_query(authorization, token)
-
-    include = bool(include_archivo)
-    if include:
-        if not (user["rol"] == "profesional" and int(user["user_id"]) == int(profesional_id)):
-            include = False
+    await _auth_from_headers_or_query(authorization, token)
 
     items = listar_certificaciones_profesional(int(profesional_id))
-    out = [_serialize_cert(dict(r), include_archivo=bool(include)) for r in (items or [])]
+    out = [_serialize_cert(dict(r), include_archivo=bool(include_archivo)) for r in (items or [])]
     return {"profesional_id": int(profesional_id), "items": out}
 
 
@@ -489,13 +486,43 @@ async def get_inbox(
     authorization: str | None = Header(default=None, alias="Authorization"),
     token: str | None = Query(default=None),
     limit: int = Query(default=30),
+    include_foto: bool = Query(default=False),
 ):
     user = await _auth_from_headers_or_query(authorization, token)
+
+    include = bool(include_foto)
     if user["rol"] == "profesional":
-        items = await inbox_profesional(profesional_id=int(user["user_id"]), limit=int(limit))
-        return {"rol": "profesional", "items": items}
-    items = await inbox_cliente(cliente_id=int(user["user_id"]), limit=int(limit))
-    return {"rol": "cliente", "items": items}
+        items = await inbox_profesional(
+            profesional_id=int(user["user_id"]),
+            limit=int(limit),
+            include_foto=include,
+        )
+        out = []
+        for it in items or []:
+            row = dict(it)
+            if include:
+                row["foto_b64"] = _b64(row.pop("foto", None))
+            else:
+                row.pop("foto", None)
+                row.pop("foto_mime", None)
+            out.append(row)
+        return {"rol": "profesional", "items": out}
+
+    items = await inbox_cliente(
+        cliente_id=int(user["user_id"]),
+        limit=int(limit),
+        include_foto=include,
+    )
+    out = []
+    for it in items or []:
+        row = dict(it)
+        if include:
+            row["foto_b64"] = _b64(row.pop("foto", None))
+        else:
+            row.pop("foto", None)
+            row.pop("foto_mime", None)
+        out.append(row)
+    return {"rol": "cliente", "items": out}
 
 
 @api.get("/unread_count")

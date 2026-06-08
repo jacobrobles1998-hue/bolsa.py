@@ -12,9 +12,11 @@ def barra_navegacion_glass():
     """
     
     # 🎨 INYECCIÓN DE CSS AVANZADO - UNIFICACIÓN DE CHASIS Y EFECTO FLOTANTE
-    st.markdown(
-        """
-        <style>
+    if not st.session_state.get("_nav_css_injected"):
+        st.session_state["_nav_css_injected"] = True
+        st.markdown(
+            """
+            <style>
         /* 1. EL CHASIS CONTENEDOR (Esto es lo que le da el aspecto de flotar en el aire) */
         .premium-nav-container {
             position: fixed;
@@ -117,9 +119,9 @@ def barra_navegacion_glass():
             margin: 0 auto;
         }
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+            """,
+            unsafe_allow_html=True
+        )
 
     if "submenu_actual" not in st.session_state:
         st.session_state.submenu_actual = "Inicio"
@@ -216,7 +218,6 @@ def barra_navegacion_glass():
                 if "selected_cliente_chat_id" in st.session_state:
                     st.session_state.selected_cliente_chat_id = None
                 _qp_set({"tab": "Inicio", "prof": None, "cli": None})
-                st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Botón 2: Mensajes (Activa el brillo ámbar inferior al ser seleccionado)
@@ -226,7 +227,6 @@ def barra_navegacion_glass():
             if st.button("Mensajes", key="nav_p_mensajes", use_container_width=True):
                 st.session_state.submenu_actual = "Mensajes"
                 _qp_set({"tab": "Mensajes"})
-                st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Botón 3: Contratos
@@ -236,7 +236,6 @@ def barra_navegacion_glass():
             if st.button("Contratos", key="nav_p_contratos", use_container_width=True):
                 st.session_state.submenu_actual = "Contratos"
                 _qp_set({"tab": "Contratos"})
-                st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Buscador Neumórfico Integrado
@@ -299,15 +298,19 @@ def barra_navegacion_glass():
             with c_set:
                 if st.button("\u00a0", key="nav_settings", help="Configuraciones"):
                     st.session_state.submenu_actual = "Configuraciones"
+                    if "selected_profesional_id" in st.session_state:
+                        st.session_state.selected_profesional_id = None
+                    if "selected_cliente_chat_id" in st.session_state:
+                        st.session_state.selected_cliente_chat_id = None
                     _qp_set({"tab": "Configuraciones"})
-                    st.rerun()
             with c_prof:
                 if st.button("\u00a0", key="nav_profile", help="Ver mi perfil"):
                     st.session_state.submenu_actual = "perfil"
                     if "selected_profesional_id" in st.session_state:
                         st.session_state.selected_profesional_id = None
-                    _qp_set({"tab": "perfil", "prof": None})
-                    st.rerun()
+                    if "selected_cliente_chat_id" in st.session_state:
+                        st.session_state.selected_cliente_chat_id = None
+                    _qp_set({"tab": "perfil", "prof": None, "cli": None})
 
         token_badge = st.session_state.get("auth_token") or _qp_all().get("s")
         if token_badge and st.session_state.get("logeado"):

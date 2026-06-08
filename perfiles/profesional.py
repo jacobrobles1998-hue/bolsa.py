@@ -8,76 +8,51 @@ from api_cliente import backend_get_json as _backend_get_json, backend_post_json
 import streamlit as st
 import streamlit.components.v1 as components
 from chat.realtime import render_inbox_listener, render_realtime_chat, render_tab_badge_listener
-from basededatos.manejarbasededatos import (
-    DEPARTAMENTOS_COLOMBIA,
-    actualizar_profesional,
-    agregar_certificacion_profesional,
-    guardar_foto_profesional,
-    listar_certificaciones_profesional,
-    listar_clientes_de_profesional,
-    obtener_cliente_por_id,
-)
-
-
-ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
-MAX_IMAGE_BYTES = 3 * 1024 * 1024
-MAX_CERT_BYTES = 6 * 1024 * 1024
-
-
-def _sniff_image_mime(data: bytes) -> str | None:
-    if not data:
-        return None
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"\xff\xd8"):
-        return "image/jpeg"
-    if len(data) >= 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
-
-
-def _read_validated_image(uploaded) -> tuple[bytes, str]:
-    raw = uploaded.getvalue() if uploaded is not None else b""
-    if not raw:
-        raise ValueError("La imagen está vacía.")
-    if len(raw) > MAX_IMAGE_BYTES:
-        raise ValueError("La imagen es demasiado grande. Máximo 3MB.")
-
-    declared = (getattr(uploaded, "type", None) or "").strip().lower()
-    sniffed = _sniff_image_mime(raw)
-    mime = sniffed or declared
-
-    if not mime or mime not in ALLOWED_IMAGE_MIME:
-        raise ValueError("Formato de imagen no permitido. Usa PNG, JPG/JPEG o WEBP.")
-
-    if sniffed and declared and sniffed != declared:
-        raise ValueError("El tipo de archivo no coincide con el contenido de la imagen.")
-
-    return raw, mime
-
-
-def _read_validated_cert(uploaded) -> tuple[bytes, str]:
-    raw = uploaded.getvalue() if uploaded is not None else b""
-    if not raw:
-        raise ValueError("El certificado está vacío.")
-    if len(raw) > MAX_CERT_BYTES:
-        raise ValueError("El certificado es demasiado grande. Máximo 6MB.")
-
-    declared = (getattr(uploaded, "type", None) or "").strip().lower()
-    sniffed = _sniff_image_mime(raw)
-    mime = sniffed or declared
-
-    if not mime or mime not in ALLOWED_IMAGE_MIME:
-        raise ValueError("Formato de certificado no permitido. Usa PNG, JPG/JPEG o WEBP.")
-
-    if sniffed and declared and sniffed != declared:
-        raise ValueError("El tipo de archivo no coincide con el contenido del certificado.")
-
-    return raw, mime
+from shared.catalogos import DEPARTAMENTOS_COLOMBIA, GENEROS
+from shared.catalogos_profesionales import TARIFA_UNIDADES
+from shared.formatters import format_cop_input, format_datetime_short, initials, shorten_text
+from shared.media import bytes_to_b64
+from shared.validators import validate_cert_file, validate_image_file
 
 
 def _h(value) -> str:
     return html.escape("" if value is None else str(value))
+
+
+_INBOX_CSS = """
+<style>
+.axon-inbox {max-width: 780px; margin: 0 auto;}
+.axon-inbox a{ text-decoration: none !important; }
+.axon-inbox-item{display:flex; align-items:center; gap:14px; padding:12px 10px; border-radius:16px; border:1px solid rgba(15,23,42,.06); background:rgba(255,255,255,.92); box-shadow:0 10px 24px rgba(15,23,42,.06);}
+.axon-inbox-item:hover{ background: rgba(248,250,252,1); }
+.axon-inbox-avatar{width:56px; height:56px; border-radius:999px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#e2e8f0; border:3px solid rgba(148,163,184,.55); flex:0 0 56px;}
+.axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
+.axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+.axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
+.axon-inbox-body{ flex:1 1 auto; min-width:0; }
+.axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
+.axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.axon-inbox-meta{ flex:0 0 auto; text-align:right; min-width:72px; }
+.axon-inbox-time{ color:#64748b; font-size:12px; }
+.axon-inbox-badge{display:inline-flex; min-width:22px; height:22px; padding:0 7px; border-radius:999px; background:#ef4444; color:#fff; align-items:center; justify-content:center; font-weight:900; font-size:12px; margin-top:6px;}
+.axon-inbox-sep{ height:10px; }
+</style>
+"""
+
+
+def _ensure_inbox_css():
+    if not st.session_state.get("_prof_inbox_css_injected"):
+        st.session_state["_prof_inbox_css_injected"] = True
+        st.markdown(_INBOX_CSS, unsafe_allow_html=True)
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def _api_get_prof_certs(token: str, prof_id: int, include_archivo: bool) -> list[dict]:
+    res = _backend_get_json(
+        f"/profesionales/{int(prof_id)}/certificaciones",
+        {"token": str(token), "include_archivo": "true" if include_archivo else "false"},
+    )
+    return (res or {}).get("items") or []
 
 
 def _qp_get(key: str):
@@ -347,14 +322,6 @@ def _avatar_profesional(
     </div>
     """
 
-
-def _format_cop(value) -> str:
-    try:
-        return f"{int(float(value)):,.0f}".replace(",", ".")
-    except Exception:
-        return str(value)
-
-
 def _mostrar_campo(etiqueta: str, valor, *, uid: int = 0):
     if valor is None or (isinstance(valor, str) and not valor.strip()):
         return
@@ -378,7 +345,7 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
         key=f"pro_edit_save_foto_{uid}",
     ):
         try:
-            foto_bytes, foto_mime = _read_validated_image(foto_file)
+            foto_bytes, foto_mime = validate_image_file(foto_file)
         except ValueError as e:
             st.error(str(e))
         else:
@@ -390,7 +357,7 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
                     "/me/foto",
                     {"token": str(token)},
                     {
-                        "foto_b64": base64.b64encode(foto_bytes).decode("ascii"),
+                        "foto_b64": bytes_to_b64(foto_bytes),
                         "foto_mime": foto_mime,
                     },
                 )
@@ -407,11 +374,7 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
     current = []
     if token:
         try:
-            res = _backend_get_json(
-                f"/profesionales/{int(uid)}/certificaciones",
-                {"token": str(token), "include_archivo": True},
-            )
-            current = (res or {}).get("items") or []
+            current = _api_get_prof_certs(str(token), int(uid), True)
         except Exception:
             current = []
 
@@ -460,13 +423,13 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
             if not token:
                 raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
             for f in (cert_files or []):
-                b, m = _read_validated_cert(f)
+                b, m = validate_cert_file(f)
                 _backend_post_json(
                     "/me/certificaciones",
                     {"token": str(token)},
                     {
                         "titulo": None,
-                        "archivo_b64": base64.b64encode(b).decode("ascii"),
+                        "archivo_b64": bytes_to_b64(b),
                         "archivo_mime": m,
                     },
                 )
@@ -530,7 +493,7 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
     if exp_key not in st.session_state:
         st.session_state[exp_key] = int(datos.get("experiencia") or 0)
     if tarifa_key not in st.session_state:
-        st.session_state[tarifa_key] = _format_cop(datos.get("tarifa") or 0)
+        st.session_state[tarifa_key] = format_cop_input(datos.get("tarifa") or 0)
     if tunit_key not in st.session_state:
         st.session_state[tunit_key] = (datos.get("tarifa_unidad") or "sesion")
     if metodo_key not in st.session_state:
@@ -542,9 +505,9 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
         telefono_new = st.text_input("Teléfono", key=tel_key)
         genero_new = st.selectbox(
             "Género",
-            ["", "Masculino", "Femenino", "Otro"],
-            index=["", "Masculino", "Femenino", "Otro"].index(
-                st.session_state.get(gen_key) if st.session_state.get(gen_key) in ["", "Masculino", "Femenino", "Otro"] else ""
+            ["", *GENEROS],
+            index=["", *GENEROS].index(
+                st.session_state.get(gen_key) if st.session_state.get(gen_key) in ["", *GENEROS] else ""
             ),
             key=gen_key,
         )
@@ -556,9 +519,9 @@ def _render_profesional_edit_form(*, datos: dict, uid: int):
         tarifa_txt = st.text_input("Precio (COP)", placeholder="Ej: 300.000", key=tarifa_key)
         tarifa_unidad_ui = st.selectbox(
             "Periodicidad",
-            ["sesion", "semana", "mes"],
-            index=["sesion", "semana", "mes"].index(
-                st.session_state.get(tunit_key) if st.session_state.get(tunit_key) in ["sesion", "semana", "mes"] else "sesion"
+            TARIFA_UNIDADES,
+            index=TARIFA_UNIDADES.index(
+                st.session_state.get(tunit_key) if st.session_state.get(tunit_key) in TARIFA_UNIDADES else "sesion"
             ),
             key=tunit_key,
         )
@@ -775,15 +738,25 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
         if certificacion_texto:
             _mostrar_campo("Certificación", certificacion_texto, uid=uid)
 
-        if prof_id is not None:
-            certs = listar_certificaciones_profesional(int(prof_id))
+        token_sesion = st.session_state.get("auth_token") or _qp_get("s")
+        if prof_id is not None and token_sesion:
+            try:
+                certs = _api_get_prof_certs(str(token_sesion), int(prof_id), True)
+            except Exception:
+                certs = []
         else:
             certs = []
 
         st.subheader("Certificados / Diplomas")
         if certs:
             for c in certs:
-                archivo = c.get("archivo")
+                archivo_b64 = c.get("archivo_b64")
+                archivo = None
+                if archivo_b64:
+                    try:
+                        archivo = base64.b64decode(str(archivo_b64))
+                    except Exception:
+                        archivo = None
                 mime = c.get("archivo_mime") or "application/octet-stream"
                 titulo = c.get("titulo") or "Certificado"
                 if archivo and str(mime).startswith("image/"):
@@ -941,21 +914,6 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
                 st.info("Inicia sesión para ver tus mensajes.")
             else:
 
-                def _fmt_ts(v):
-                    if not v:
-                        return ""
-                    s = str(v).replace("T", " ")
-                    return s[:16] if len(s) >= 16 else s
-
-                def _preview(t):
-                    t = (t or "").strip().replace("\n", " ")
-                    if len(t) > 56:
-                        t = t[:56].rstrip() + "…"
-                    return t
-
-                def _initials(nombre: str) -> str:
-                    parts = [p for p in (nombre or "").strip().split() if p]
-                    return ("".join([p[0] for p in parts[:2]]) or "?").upper()
 
                 def _href_open_cli(cliente_id: int) -> str:
                     params = _qp_all()
@@ -964,49 +922,13 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
                     qs = urlencode({k: v for k, v in params.items() if v is not None})
                     return "?" + qs
 
-                st.markdown(
-                    """
-                    <style>
-                    .axon-inbox {max-width: 780px; margin: 0 auto;}
-                    .axon-inbox a{ text-decoration: none !important; }
-                    .axon-inbox-item{
-                      display:flex; align-items:center; gap:14px;
-                      padding: 12px 10px;
-                      border-radius: 16px;
-                      border: 1px solid rgba(15,23,42,.06);
-                      background: rgba(255,255,255,.92);
-                      box-shadow: 0 10px 24px rgba(15,23,42,.06);
-                    }
-                    .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
-                    .axon-inbox-avatar{
-                      width:56px; height:56px; border-radius:999px; overflow:hidden;
-                      display:flex; align-items:center; justify-content:center;
-                      background:#e2e8f0;
-                      border: 3px solid rgba(148,163,184,.55);
-                      flex: 0 0 56px;
-                    }
-                    .axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
-                    .axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
-                    .axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
-                    .axon-inbox-body{ flex: 1 1 auto; min-width: 0; }
-                    .axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
-                    .axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                    .axon-inbox-meta{ flex: 0 0 auto; text-align:right; min-width:72px; }
-                    .axon-inbox-time{ color:#64748b; font-size:12px; }
-                    .axon-inbox-badge{
-                      display:inline-flex; min-width:22px; height:22px; padding:0 7px;
-                      border-radius:999px; background:#ef4444; color:#fff;
-                      align-items:center; justify-content:center;
-                      font-weight:900; font-size:12px; margin-top:6px;
-                    }
-                    .axon-inbox-sep{ height:10px; }
-                    </style>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                _ensure_inbox_css()
 
                 try:
-                    inbox = _backend_get_json("/inbox", {"token": str(token_chat), "limit": 60})
+                    inbox = _backend_get_json(
+                        "/inbox",
+                        {"token": str(token_chat), "limit": 60, "include_foto": "false"},
+                    )
                     convs = inbox.get("items") or []
                 except Exception as e:
                     st.error(f"No se pudo cargar tus conversaciones: {e}")
@@ -1030,24 +952,19 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
                         for it in convs:
                             cli_id = int(it.get("cliente_id") or 0)
                             nombre = (it.get("nombre") or "Cliente").strip() or "Cliente"
-                            last_texto = _preview(it.get("last_texto"))
-                            last_at = _fmt_ts(it.get("last_at"))
+                            last_texto = shorten_text(it.get("last_texto"), 56)
+                            last_at = format_datetime_short(it.get("last_at"))
                             unread = int(it.get("unread") or 0)
 
-                            cli_row = obtener_cliente_por_id(int(cli_id)) or {}
-                            foto = cli_row.get("foto")
-                            mime = cli_row.get("foto_mime")
+                            foto_b64 = it.get("foto_b64")
+                            mime = it.get("foto_mime")
                             src = None
-                            if isinstance(foto, (bytes, bytearray)) and foto:
-                                try:
-                                    b64 = base64.b64encode(bytes(foto)).decode("ascii")
-                                    mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                    src = f"data:{mt};base64,{b64}"
-                                except Exception:
-                                    src = None
+                            if foto_b64:
+                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
+                                src = f"data:{mt};base64,{foto_b64}"
 
                             avatar_html = (
-                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(_initials(nombre))}</div>"
+                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(initials(nombre))}</div>"
                             )
                             badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
                             item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"

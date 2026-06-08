@@ -102,12 +102,13 @@ async def list_messages(*, cliente_id: int, profesional_id: int, limit: int = 50
             return out
 
 
-async def inbox_profesional(*, profesional_id: int, limit: int = 30):
+async def inbox_profesional(*, profesional_id: int, limit: int = 30, include_foto: bool = False):
     limit = max(1, min(int(limit or 30), 200))
-    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
+    extra = ""
+    if include_foto:
+        extra = ", MAX(c.foto) AS foto, MAX(c.foto_mime) AS foto_mime"
+
+    q = f"""
             SELECT
                 m.conv_id AS conv_id,
                 m.cliente_id AS cliente_id,
@@ -128,6 +129,7 @@ async def inbox_profesional(*, profesional_id: int, limit: int = 30):
                         ELSE 0
                     END
                 ) AS unread
+                {extra}
             FROM mensajes m
             LEFT JOIN clientes c ON c.id = m.cliente_id
             LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
@@ -135,9 +137,11 @@ async def inbox_profesional(*, profesional_id: int, limit: int = 30):
             GROUP BY m.conv_id
             ORDER BY last_at DESC
             LIMIT ?
-            """,
-            (int(profesional_id), limit),
-        ) as cur:
+            """
+
+    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(q, (int(profesional_id), limit)) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
 
@@ -216,12 +220,13 @@ async def unread_total(*, rol: str, user_id: int) -> int:
     return 0
 
 
-async def inbox_cliente(*, cliente_id: int, limit: int = 30):
+async def inbox_cliente(*, cliente_id: int, limit: int = 30, include_foto: bool = False):
     limit = max(1, min(int(limit or 30), 200))
-    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
+    extra = ""
+    if include_foto:
+        extra = ", MAX(p.foto) AS foto, MAX(p.foto_mime) AS foto_mime"
+
+    q = f"""
             SELECT
                 m.conv_id AS conv_id,
                 m.profesional_id AS profesional_id,
@@ -242,6 +247,7 @@ async def inbox_cliente(*, cliente_id: int, limit: int = 30):
                         ELSE 0
                     END
                 ) AS unread
+                {extra}
             FROM mensajes m
             LEFT JOIN profesionales p ON p.id = m.profesional_id
             LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
@@ -249,8 +255,10 @@ async def inbox_cliente(*, cliente_id: int, limit: int = 30):
             GROUP BY m.conv_id, m.profesional_id
             ORDER BY last_at DESC
             LIMIT ?
-            """,
-            (int(cliente_id), limit),
-        ) as cur:
+            """
+
+    async with aiosqlite.connect(DB_PATH.as_posix()) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(q, (int(cliente_id), limit)) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]

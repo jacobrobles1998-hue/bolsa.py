@@ -3,10 +3,15 @@ import streamlit.components.v1 as components
 import base64
 import html as _html
 import random
+import time
 from urllib.parse import quote, urlencode
 
 from api_cliente import backend_get_json as _backend_get_json, backend_post_json as _backend_post_json
 from chat.realtime import render_inbox_listener, render_realtime_chat
+from shared.constants import CACHE_TTL_SHORT, CACHE_TTL_STANDARD, DEFAULT_INBOX_LIMIT
+from shared.formatters import format_datetime_short, initials, shorten_text
+from shared.media import bytes_to_b64
+from shared.validators import validate_image_file
 
 # 1. Configuración de la página
 st.set_page_config(
@@ -52,15 +57,9 @@ from basededatos.manejarbasededatos import (
     asegurar_profesional_demo,
     buscar_profesionales,
     crear_contrato,
-    crear_sesion,
-    crear_tablas_iniciales,
     eliminar_cliente,
     eliminar_profesional,
-    guardar_foto_cliente,
-    guardar_foto_profesional,
     listar_clientes_de_profesional,
-    obtener_cliente_por_id,
-    obtener_profesional_por_id,
     obtener_todos_los_profesionales,
 )
 from estilo.estilocss import css__styles
@@ -68,22 +67,10 @@ from interfaz_base import barra_navegacion_glass
 
 st.markdown(f'<style>{css__styles}</style>', unsafe_allow_html=True) 
 
-MAX_IMAGE_BYTES = 3 * 1024 * 1024
-ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
-
-
 def _read_image_upload(file_obj):
     if file_obj is None:
         raise ValueError("No se recibió archivo.")
-    mime = getattr(file_obj, "type", None) or ""
-    if mime not in ALLOWED_IMAGE_MIME:
-        raise ValueError("Formato de imagen no permitido.")
-    data = file_obj.getvalue()
-    if not data:
-        raise ValueError("La imagen está vacía.")
-    if len(data) > MAX_IMAGE_BYTES:
-        raise ValueError("La imagen es demasiado pesada. Usa una imagen más liviana.")
-    return data, mime
+    return validate_image_file(file_obj)
 
 
 def _h(value) -> str:
@@ -93,11 +80,38 @@ def _img_src(foto_bytes, mime: str | None):
     if not foto_bytes:
         return "https://via.placeholder.com/96"
     try:
-        b64 = base64.b64encode(foto_bytes).decode("ascii")
         mt = (mime or "image/jpeg").strip() or "image/jpeg"
-        return f"data:{mt};base64,{b64}"
+        return f"data:{mt};base64,{bytes_to_b64(foto_bytes)}"
     except Exception:
         return "https://via.placeholder.com/96"
+
+
+_INBOX_CSS = """
+<style>
+.axon-inbox {max-width: 780px; margin: 0 auto;}
+.axon-inbox a{ text-decoration: none !important; }
+.axon-inbox-item{display:flex; align-items:center; gap:14px; padding:12px 10px; border-radius:16px; border:1px solid rgba(15,23,42,.06); background:rgba(255,255,255,.92); box-shadow:0 10px 24px rgba(15,23,42,.06);}
+.axon-inbox-item:hover{ background: rgba(248,250,252,1); }
+.axon-inbox-avatar{width:56px; height:56px; border-radius:999px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#e2e8f0; border:3px solid rgba(148,163,184,.55); flex:0 0 56px;}
+.axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
+.axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+.axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
+.axon-inbox-body{ flex:1 1 auto; min-width:0; }
+.axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
+.axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.axon-inbox-meta{ flex:0 0 auto; text-align:right; min-width:72px; }
+.axon-inbox-time{ color:#64748b; font-size:12px; }
+.axon-inbox-badge{display:inline-flex; min-width:22px; height:22px; padding:0 7px; border-radius:999px; background:#ef4444; color:#fff; align-items:center; justify-content:center; font-weight:900; font-size:12px; margin-top:6px;}
+.axon-inbox-sep{ height:10px; }
+[class*="st-key-chat_back_inbox_"] button{ width:auto !important; padding:6px 12px !important; min-height:34px !important; font-size:13px !important; border-radius:12px !important; }
+</style>
+"""
+
+
+def _ensure_inbox_css():
+    if not st.session_state.get("_inbox_css_injected"):
+        st.session_state["_inbox_css_injected"] = True
+        st.markdown(_INBOX_CSS, unsafe_allow_html=True)
 
 
 def _api_decode_foto(item: dict | None) -> dict:
@@ -111,28 +125,37 @@ def _api_decode_foto(item: dict | None) -> dict:
     return out
 
 
+@st.cache_data(ttl=CACHE_TTL_STANDARD, show_spinner=False)
+def _api_get_me_raw(token: str) -> dict:
+    return _backend_get_json("/me", {"token": str(token)})
+
+
 def _api_get_me_profile(token: str | None) -> dict | None:
     if not token:
         return None
-    me = _backend_get_json("/me", {"token": str(token)})
+    me = _api_get_me_raw(str(token))
     profile = _api_decode_foto((me or {}).get("profile") or {})
     return profile or None
+
+
+@st.cache_data(ttl=CACHE_TTL_STANDARD, show_spinner=False)
+def _api_get_profesional_raw(token: str, prof_id: int, include_foto: bool) -> dict:
+    return _backend_get_json(
+        f"/profesionales/{int(prof_id)}",
+        {"token": str(token), "include_foto": "true" if include_foto else "false"},
+    )
 
 
 def _api_get_profesional(token: str | None, prof_id: int, *, include_foto: bool = True) -> dict | None:
     if not token:
         return None
-    res = _backend_get_json(
-        f"/profesionales/{int(prof_id)}",
-        {"token": str(token), "include_foto": "true" if include_foto else "false"},
-    )
+    res = _api_get_profesional_raw(str(token), int(prof_id), bool(include_foto))
     item = (res or {}).get("item") or {}
     return _api_decode_foto(item) if include_foto else dict(item)
 
 
-def _api_list_profesionales(token: str | None, *, texto: str | None, solo_verificados: bool, include_foto: bool) -> list[dict]:
-    if not token:
-        return []
+@st.cache_data(ttl=CACHE_TTL_STANDARD, show_spinner=False)
+def _api_list_profesionales_raw(token: str, texto: str | None, solo_verificados: bool, include_foto: bool) -> dict:
     params = {
         "token": str(token),
         "solo_verificados": "true" if bool(solo_verificados) else "false",
@@ -140,24 +163,54 @@ def _api_list_profesionales(token: str | None, *, texto: str | None, solo_verifi
     }
     if texto:
         params["texto"] = str(texto)
-    res = _backend_get_json("/profesionales", params)
+    return _backend_get_json("/profesionales", params)
+
+
+def _api_list_profesionales(token: str | None, *, texto: str | None, solo_verificados: bool, include_foto: bool) -> list[dict]:
+    if not token:
+        return []
+    res = _api_list_profesionales_raw(str(token), texto, bool(solo_verificados), bool(include_foto))
     items = (res or {}).get("items") or []
     if not include_foto:
         return [dict(x) for x in items]
     return [_api_decode_foto(dict(x)) for x in items]
+
+
+@st.cache_data(ttl=CACHE_TTL_STANDARD, show_spinner=False)
+def _api_get_contratos_raw(token: str, include_foto: bool) -> dict:
+    return _backend_get_json(
+        "/contratos",
+        {"token": str(token), "include_foto": "true" if bool(include_foto) else "false"},
+    )
 
 
 def _api_get_contratos(token: str | None, *, include_foto: bool = False) -> list[dict]:
     if not token:
         return []
-    res = _backend_get_json(
-        "/contratos",
-        {"token": str(token), "include_foto": "true" if bool(include_foto) else "false"},
-    )
+    res = _api_get_contratos_raw(str(token), bool(include_foto))
     items = (res or {}).get("items") or []
     if not include_foto:
         return [dict(x) for x in items]
     return [_api_decode_foto(dict(x)) for x in items]
+
+
+@st.cache_data(ttl=CACHE_TTL_SHORT, show_spinner=False)
+def _api_get_inbox_raw(token: str, limit: int, include_foto: bool) -> dict:
+    return _backend_get_json(
+        "/inbox",
+        {
+            "token": str(token),
+            "limit": int(limit),
+            "include_foto": "true" if bool(include_foto) else "false",
+        },
+    )
+
+
+def _api_get_inbox(token: str | None, *, limit: int = DEFAULT_INBOX_LIMIT, include_foto: bool = False) -> list[dict]:
+    if not token:
+        return []
+    res = _api_get_inbox_raw(str(token), int(limit), bool(include_foto))
+    return (res or {}).get("items") or []
 
 
 def _href_inicio_prof(prof_id: int, token: str | None, q_buscar: str | None):
@@ -203,37 +256,32 @@ def _qp_set(updates: dict):
         st.experimental_set_query_params(**params)
 
 def _sync_user_foto(rol: str, usuario_id: int, token: str | None):
-    if token:
-        try:
-            me = _backend_get_json("/me", {"token": str(token)})
-            profile = (me or {}).get("profile") or {}
-            if profile.get("nombre"):
-                st.session_state.nombre_usuario = profile.get("nombre")
-            foto_b64 = profile.get("foto_b64")
-            if foto_b64:
-                st.session_state.foto_usuario = base64.b64decode(foto_b64)
-                st.session_state.foto_usuario_mime = profile.get("foto_mime")
-            return
-        except Exception:
-            pass
-
-    if rol == "cliente":
-        user = obtener_cliente_por_id(int(usuario_id))
-    else:
-        user = obtener_profesional_por_id(int(usuario_id))
-    if not user:
+    if not token:
         return
-    if user.get("nombre"):
-        st.session_state.nombre_usuario = user.get("nombre")
-    st.session_state.foto_usuario = user.get("foto")
-    st.session_state.foto_usuario_mime = user.get("foto_mime")
 
-if "db_inicializada" not in st.session_state:
+    now = time.time()
+    last = st.session_state.get("_me_last_sync_ts") or 0.0
     try:
-        crear_tablas_iniciales()
-        st.session_state.db_inicializada = True
-    except Exception as e:
-        st.error(f"Error al inicializar la base de datos: {e}")
+        last_f = float(last)
+    except Exception:
+        last_f = 0.0
+
+    if (now - last_f) < 10 and st.session_state.get("foto_usuario") is not None:
+        return
+
+    st.session_state["_me_last_sync_ts"] = now
+
+    try:
+        me = _api_get_me_raw(str(token))
+        profile = (me or {}).get("profile") or {}
+        if profile.get("nombre"):
+            st.session_state.nombre_usuario = profile.get("nombre")
+        foto_b64 = profile.get("foto_b64")
+        if foto_b64:
+            st.session_state.foto_usuario = base64.b64decode(foto_b64)
+            st.session_state.foto_usuario_mime = profile.get("foto_mime")
+    except Exception:
+        return
 
 if "demo_prof_ready" not in st.session_state:
     st.session_state.demo_prof_ready = False
@@ -259,8 +307,8 @@ prof_q = _qp_get("prof")
 if st.session_state.submenu_actual == "Inicio" and prof_q and str(prof_q).isdigit():
     st.session_state.selected_profesional_id = int(prof_q)
 
-if not st.session_state.logeado:
-    token_q = _qp_get("s") or st.session_state.get("auth_token")
+if not st.session_state.logeado and st.session_state.get("pantalla") != "foto_perfil":
+    token_q = st.session_state.get("auth_token") or _qp_get("s")
     if token_q:
         try:
             me = _backend_get_json("/me", {"token": str(token_q)})
@@ -286,6 +334,8 @@ if not st.session_state.logeado:
                 if rol_me == "profesional":
                     estado = (profile.get("estado_verificacion") or "pendiente").strip().lower()
                     st.session_state.prof_en_verificacion = estado != "verificado"
+                    if st.session_state.prof_en_verificacion and _qp_get("tab") in {None, "", "Inicio"}:
+                        st.session_state.submenu_actual = "perfil"
                 else:
                     st.session_state.prof_en_verificacion = False
         except Exception:
@@ -313,6 +363,35 @@ if st.session_state.logeado:
 
     _sync_user_foto(rol, int(usuario_id), st.session_state.get("auth_token"))
     vista = st.session_state.submenu_actual
+
+    if rol == "profesional" and st.session_state.get("prof_en_verificacion") and vista == "Inicio":
+        st.session_state.submenu_actual = "perfil"
+        st.session_state.selected_profesional_id = None
+        st.session_state.selected_cliente_chat_id = None
+        _qp_set({"tab": "perfil", "prof": None, "cli": None, "open_prof": None, "open_cli": None})
+        st.rerun()
+
+    en_detalle_prof = (
+        vista == "Inicio"
+        and rol == "cliente"
+        and st.session_state.get("selected_profesional_id") is not None
+    )
+
+    en_chat_activo = (
+        vista == "Mensajes"
+        and (
+            (rol == "cliente" and st.session_state.get("selected_profesional_id") is not None)
+            or (rol == "profesional" and st.session_state.get("selected_cliente_chat_id") is not None)
+        )
+    )
+
+    nav_slot = st.empty()
+    ocultar_nav = (vista in {"perfil", "Configuraciones"}) or bool(en_detalle_prof) or bool(en_chat_activo)
+    if not ocultar_nav:
+        with nav_slot:
+            barra_navegacion_glass()
+
+    vista = st.session_state.submenu_actual
     en_detalle_prof = (
         vista == "Inicio"
         and rol == "cliente"
@@ -328,9 +407,10 @@ if st.session_state.logeado:
     )
 
     ocultar_nav = (vista in {"perfil", "Configuraciones"}) or bool(en_detalle_prof) or bool(en_chat_activo)
-    if not ocultar_nav:
-        barra_navegacion_glass()
-    else:
+    if ocultar_nav:
+        nav_slot.empty()
+
+    if ocultar_nav:
         if vista == "perfil" and rol == "profesional":
             st.markdown(
                 """
@@ -392,7 +472,7 @@ if st.session_state.logeado:
                     token_sesion,
                     texto=(q_buscar or None),
                     solo_verificados=False,
-                    include_foto=True,
+                    include_foto=False,
                 )
             except Exception:
                 todos_los_profesionales = []
@@ -571,70 +651,7 @@ if st.session_state.logeado:
         if not token_chat:
             st.info("Inicia sesión para ver tus mensajes.")
         else:
-            def _fmt_ts(v):
-                if not v:
-                    return ""
-                s = str(v).replace("T", " ")
-                return s[:16] if len(s) >= 16 else s
-
-            def _preview(t):
-                t = (t or "").strip().replace("\n", " ")
-                if len(t) > 56:
-                    t = t[:56].rstrip() + "…"
-                return t
-
-            def _initials(nombre: str) -> str:
-                parts = [p for p in (nombre or "").strip().split() if p]
-                return ("".join([p[0] for p in parts[:2]]) or "?").upper()
-
-            st.markdown(
-                """
-                <style>
-                .axon-inbox {max-width: 780px; margin: 0 auto;}
-                .axon-inbox a{ text-decoration: none !important; }
-                .axon-inbox-item{
-                  display:flex; align-items:center; gap:14px;
-                  padding: 12px 10px;
-                  border-radius: 16px;
-                  border: 1px solid rgba(15,23,42,.06);
-                  background: rgba(255,255,255,.92);
-                  box-shadow: 0 10px 24px rgba(15,23,42,.06);
-                }
-                .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
-                .axon-inbox-avatar{
-                  width:56px; height:56px; border-radius:999px; overflow:hidden;
-                  display:flex; align-items:center; justify-content:center;
-                  background:#e2e8f0;
-                  border: 3px solid rgba(148,163,184,.55);
-                  flex: 0 0 56px;
-                }
-                .axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
-                .axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
-                .axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
-                .axon-inbox-body{ flex: 1 1 auto; min-width: 0; }
-                .axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
-                .axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                .axon-inbox-meta{ flex: 0 0 auto; text-align:right; min-width:72px; }
-                .axon-inbox-time{ color:#64748b; font-size:12px; }
-                .axon-inbox-badge{
-                  display:inline-flex; min-width:22px; height:22px; padding:0 7px;
-                  border-radius:999px; background:#ef4444; color:#fff;
-                  align-items:center; justify-content:center;
-                  font-weight:900; font-size:12px; margin-top:6px;
-                }
-                .axon-inbox-sep{ height:10px; }
-
-                [class*="st-key-chat_back_inbox_"] button{
-                  width: auto !important;
-                  padding: 6px 12px !important;
-                  min-height: 34px !important;
-                  font-size: 13px !important;
-                  border-radius: 12px !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
+            _ensure_inbox_css()
 
             if rol == "cliente":
 
@@ -648,8 +665,7 @@ if st.session_state.logeado:
                     return "?" + qs
 
                 try:
-                    inbox = _backend_get_json("/inbox", {"token": str(token_chat), "limit": 60})
-                    convs = inbox.get("items") or []
+                    convs = _api_get_inbox(token_chat, limit=DEFAULT_INBOX_LIMIT, include_foto=False)
                 except Exception as e:
                     st.error(f"No se pudo cargar tus conversaciones: {e}")
                     convs = []
@@ -675,24 +691,19 @@ if st.session_state.logeado:
                         for it in convs:
                             prof_id = int(it.get("profesional_id") or 0)
                             nombre = (it.get("nombre") or "Profesional").strip() or "Profesional"
-                            last_texto = _preview(it.get("last_texto"))
-                            last_at = _fmt_ts(it.get("last_at"))
+                            last_texto = shorten_text(it.get("last_texto"), 56)
+                            last_at = format_datetime_short(it.get("last_at"))
                             unread = int(it.get("unread") or 0)
 
-                            prof_row = obtener_profesional_por_id(int(prof_id)) or {}
-                            foto = prof_row.get("foto")
-                            mime = prof_row.get("foto_mime")
+                            foto_b64 = it.get("foto_b64")
+                            mime = it.get("foto_mime")
                             src = None
-                            if isinstance(foto, (bytes, bytearray)) and foto:
-                                try:
-                                    b64 = base64.b64encode(bytes(foto)).decode("ascii")
-                                    mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                    src = f"data:{mt};base64,{b64}"
-                                except Exception:
-                                    src = None
+                            if foto_b64:
+                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
+                                src = f"data:{mt};base64,{foto_b64}"
 
                             avatar_html = (
-                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(_initials(nombre))}</div>"
+                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(initials(nombre))}</div>"
                             )
                             badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
                             item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"
@@ -744,8 +755,7 @@ if st.session_state.logeado:
                     return "?" + qs
 
                 try:
-                    inbox = _backend_get_json("/inbox", {"token": str(token_chat), "limit": 60})
-                    convs = inbox.get("items") or []
+                    convs = _api_get_inbox(token_chat, limit=DEFAULT_INBOX_LIMIT, include_foto=False)
                 except Exception as e:
                     st.error(f"No se pudo cargar tus conversaciones: {e}")
                     convs = []
@@ -771,24 +781,19 @@ if st.session_state.logeado:
                         for it in convs:
                             cli_id = int(it.get("cliente_id") or 0)
                             nombre = (it.get("nombre") or "Cliente").strip() or "Cliente"
-                            last_texto = _preview(it.get("last_texto"))
-                            last_at = _fmt_ts(it.get("last_at"))
+                            last_texto = shorten_text(it.get("last_texto"), 56)
+                            last_at = format_datetime_short(it.get("last_at"))
                             unread = int(it.get("unread") or 0)
 
-                            cli_row = obtener_cliente_por_id(int(cli_id)) or {}
-                            foto = cli_row.get("foto")
-                            mime = cli_row.get("foto_mime")
+                            foto_b64 = it.get("foto_b64")
+                            mime = it.get("foto_mime")
                             src = None
-                            if isinstance(foto, (bytes, bytearray)) and foto:
-                                try:
-                                    b64 = base64.b64encode(bytes(foto)).decode("ascii")
-                                    mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                    src = f"data:{mt};base64,{b64}"
-                                except Exception:
-                                    src = None
+                            if foto_b64:
+                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
+                                src = f"data:{mt};base64,{foto_b64}"
 
                             avatar_html = (
-                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(_initials(nombre))}</div>"
+                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(initials(nombre))}</div>"
                             )
                             badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
                             item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"
@@ -858,8 +863,12 @@ if st.session_state.logeado:
         col_back, _ = st.columns([0.25, 0.75])
         with col_back:
             if st.button("← Volver", key=f"cfg_back_{rol}", use_container_width=True):
-                st.session_state.submenu_actual = "perfil"
-                _qp_set({"tab": "perfil"})
+                st.session_state.submenu_actual = "Inicio"
+                if "selected_profesional_id" in st.session_state:
+                    st.session_state.selected_profesional_id = None
+                if "selected_cliente_chat_id" in st.session_state:
+                    st.session_state.selected_cliente_chat_id = None
+                _qp_set({"tab": "Inicio", "prof": None, "cli": None})
                 st.rerun()
 
         token_sesion = st.session_state.get("auth_token") or _qp_get("s")
@@ -879,11 +888,7 @@ if st.session_state.logeado:
             st.write(f"Rol: {rol}")
             st.write(f"ID: {usuario_id}")
             st.write(f"Nombre: {nombre_usuario}")
-            token_sesion = st.session_state.get("auth_token") or _qp_get("s")
-            try:
-                prof = _api_get_me_profile(token_sesion) or {}
-            except Exception:
-                prof = {}
+            prof = profile or {}
             if prof.get("email"):
                 st.write(f"Correo electrónico: {prof.get('email')}")
 
@@ -954,7 +959,9 @@ if st.session_state.logeado:
                 st.rerun()
 
     elif vista == "Progreso":
-        st.markdown("<h2 style='color:white;'>Mensajes</h2>", unsafe_allow_html=True)
+        st.session_state.submenu_actual = "Mensajes"
+        _qp_set({"tab": "Mensajes"})
+        st.rerun()
         token_chat = st.session_state.get("auth_token") or _qp_get("s")
         if not token_chat:
             st.info("Inicia sesión para ver tus mensajes.")
@@ -989,8 +996,7 @@ if st.session_state.logeado:
                     return "?" + qs
 
                 try:
-                    inbox = _backend_get_json("/inbox", {"token": str(token_chat), "limit": 60})
-                    convs = inbox.get("items") or []
+                    convs = _api_get_inbox(token_chat, limit=DEFAULT_INBOX_LIMIT, include_foto=False)
                 except Exception as e:
                     st.error(f"No se pudo cargar tus conversaciones: {e}")
                     convs = []
@@ -1008,46 +1014,7 @@ if st.session_state.logeado:
                 pid = st.session_state.get("selected_profesional_id")
 
                 if pid is None:
-                    st.markdown(
-                        """
-                        <style>
-                        .axon-inbox {max-width: 780px; margin: 0 auto;}
-                        .axon-inbox a{ text-decoration: none !important; }
-                        .axon-inbox-item{
-                          display:flex; align-items:center; gap:14px;
-                          padding: 12px 10px;
-                          border-radius: 16px;
-                          border: 1px solid rgba(15,23,42,.06);
-                          background: rgba(255,255,255,.92);
-                          box-shadow: 0 10px 24px rgba(15,23,42,.06);
-                        }
-                        .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
-                        .axon-inbox-avatar{
-                          width:56px; height:56px; border-radius:999px; overflow:hidden;
-                          display:flex; align-items:center; justify-content:center;
-                          background:#e2e8f0;
-                          border: 3px solid rgba(148,163,184,.55);
-                          flex: 0 0 56px;
-                        }
-                        .axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
-                        .axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
-                        .axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
-                        .axon-inbox-body{ flex: 1 1 auto; min-width: 0; }
-                        .axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
-                        .axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                        .axon-inbox-meta{ flex: 0 0 auto; text-align:right; min-width:72px; }
-                        .axon-inbox-time{ color:#64748b; font-size:12px; }
-                        .axon-inbox-badge{
-                          display:inline-flex; min-width:22px; height:22px; padding:0 7px;
-                          border-radius:999px; background:#ef4444; color:#fff;
-                          align-items:center; justify-content:center;
-                          font-weight:900; font-size:12px; margin-top:6px;
-                        }
-                        .axon-inbox-sep{ height:10px; }
-                        </style>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                    _ensure_inbox_css()
 
                     st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
                     if not convs:
@@ -1060,17 +1027,12 @@ if st.session_state.logeado:
                             last_at = _fmt_ts(it.get("last_at"))
                             unread = int(it.get("unread") or 0)
 
-                            prof_row = obtener_profesional_por_id(int(prof_id)) or {}
-                            foto = prof_row.get("foto")
-                            mime = prof_row.get("foto_mime")
+                            foto_b64 = it.get("foto_b64")
+                            mime = it.get("foto_mime")
                             src = None
-                            if isinstance(foto, (bytes, bytearray)) and foto:
-                                try:
-                                    b64 = base64.b64encode(bytes(foto)).decode("ascii")
-                                    mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                    src = f"data:{mt};base64,{b64}"
-                                except Exception:
-                                    src = None
+                            if foto_b64:
+                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
+                                src = f"data:{mt};base64,{foto_b64}"
 
                             avatar_html = (
                                 f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(_initials(nombre))}</div>"
@@ -1099,8 +1061,6 @@ if st.session_state.logeado:
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     pid = int(pid)
-                    prof = obtener_profesional_por_id(pid) or {}
-                    st.markdown(f"### {prof.get('nombre') or 'Profesional'}")
 
                     if st.button("← Volver", use_container_width=True, key=f"chat_back_inbox_cli_{usuario_id}_{pid}"):
                         st.session_state.selected_profesional_id = None
@@ -1145,8 +1105,7 @@ if st.session_state.logeado:
                     return "?" + qs
 
                 try:
-                    inbox = _backend_get_json("/inbox", {"token": str(token_chat), "limit": 60})
-                    convs = inbox.get("items") or []
+                    convs = _api_get_inbox(token_chat, limit=60, include_foto=False)
                 except Exception as e:
                     st.error(f"No se pudo cargar tus conversaciones: {e}")
                     convs = []
@@ -1164,46 +1123,7 @@ if st.session_state.logeado:
                 cid = st.session_state.get("selected_cliente_chat_id")
 
                 if cid is None:
-                    st.markdown(
-                        """
-                        <style>
-                        .axon-inbox {max-width: 780px; margin: 0 auto;}
-                        .axon-inbox a{ text-decoration: none !important; }
-                        .axon-inbox-item{
-                          display:flex; align-items:center; gap:14px;
-                          padding: 12px 10px;
-                          border-radius: 16px;
-                          border: 1px solid rgba(15,23,42,.06);
-                          background: rgba(255,255,255,.92);
-                          box-shadow: 0 10px 24px rgba(15,23,42,.06);
-                        }
-                        .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
-                        .axon-inbox-avatar{
-                          width:56px; height:56px; border-radius:999px; overflow:hidden;
-                          display:flex; align-items:center; justify-content:center;
-                          background:#e2e8f0;
-                          border: 3px solid rgba(148,163,184,.55);
-                          flex: 0 0 56px;
-                        }
-                        .axon-inbox-item.unread .axon-inbox-avatar{ border-color: rgba(239,68,68,.75); }
-                        .axon-inbox-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
-                        .axon-inbox-avatar .ini{ font-weight:900; color:#0f172a; font-size:18px; }
-                        .axon-inbox-body{ flex: 1 1 auto; min-width: 0; }
-                        .axon-inbox-title{ font-weight:900; color:#0f172a; font-size:16px; line-height:1.1; }
-                        .axon-inbox-sub{ color:#64748b; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                        .axon-inbox-meta{ flex: 0 0 auto; text-align:right; min-width:72px; }
-                        .axon-inbox-time{ color:#64748b; font-size:12px; }
-                        .axon-inbox-badge{
-                          display:inline-flex; min-width:22px; height:22px; padding:0 7px;
-                          border-radius:999px; background:#ef4444; color:#fff;
-                          align-items:center; justify-content:center;
-                          font-weight:900; font-size:12px; margin-top:6px;
-                        }
-                        .axon-inbox-sep{ height:10px; }
-                        </style>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                    _ensure_inbox_css()
 
                     st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
                     if not convs:
@@ -1216,17 +1136,12 @@ if st.session_state.logeado:
                             last_at = _fmt_ts(it.get("last_at"))
                             unread = int(it.get("unread") or 0)
 
-                            cli_row = obtener_cliente_por_id(int(cli_id)) or {}
-                            foto = cli_row.get("foto")
-                            mime = cli_row.get("foto_mime")
+                            foto_b64 = it.get("foto_b64")
+                            mime = it.get("foto_mime")
                             src = None
-                            if isinstance(foto, (bytes, bytearray)) and foto:
-                                try:
-                                    b64 = base64.b64encode(bytes(foto)).decode("ascii")
-                                    mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                    src = f"data:{mt};base64,{b64}"
-                                except Exception:
-                                    src = None
+                            if foto_b64:
+                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
+                                src = f"data:{mt};base64,{foto_b64}"
 
                             avatar_html = (
                                 f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(_initials(nombre))}</div>"
@@ -1255,9 +1170,6 @@ if st.session_state.logeado:
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     cid = int(cid)
-                    cliente = obtener_cliente_por_id(cid) or {}
-                    cliente_nombre = (cliente.get("nombre") or "Cliente").strip() or "Cliente"
-                    st.markdown(f"### {cliente_nombre}")
 
                     if st.button("← Volver", use_container_width=True, key=f"chat_back_inbox_pro_{usuario_id}_{cid}"):
                         st.session_state.selected_cliente_chat_id = None
@@ -1348,12 +1260,14 @@ else:
             if st.button("Omitir por ahora", use_container_width=True):
                 token = st.session_state.get("auth_token") or _qp_get("s")
                 if not token:
-                    token = crear_sesion(str(rol), int(usuario_id))
-                    st.session_state.auth_token = token
-                _qp_set({"s": str(token), "tab": "perfil"})
+                    st.error("Tu sesión no está disponible. Inicia sesión de nuevo para continuar.")
+                    st.stop()
+                _qp_set({"s": str(token), "tab": "perfil", "prof": None, "cli": None, "open_prof": None, "open_cli": None})
                 st.session_state.logeado = True
                 st.session_state.pantalla = "login"
                 st.session_state.submenu_actual = "perfil"
+                st.session_state.selected_profesional_id = None
+                st.session_state.selected_cliente_chat_id = None
                 if rol == "profesional":
                     st.session_state.prof_en_verificacion = True
                 st.rerun()
@@ -1367,8 +1281,8 @@ else:
 
                 token = st.session_state.get("auth_token") or _qp_get("s")
                 if not token:
-                    token = crear_sesion(str(rol), int(usuario_id))
-                    st.session_state.auth_token = token
+                    st.error("Tu sesión no está disponible. Inicia sesión de nuevo para continuar.")
+                    st.stop()
 
                 try:
                     _backend_post_json(
@@ -1379,16 +1293,16 @@ else:
                             "foto_mime": foto_mime,
                         },
                     )
-                except Exception:
-                    if rol == "profesional":
-                        guardar_foto_profesional(int(usuario_id), foto_bytes, foto_mime)
-                    else:
-                        guardar_foto_cliente(int(usuario_id), foto_bytes, foto_mime)
+                except Exception as e:
+                    st.error(f"No se pudo guardar la foto en el backend: {e}")
+                    st.stop()
 
-                _qp_set({"s": str(token), "tab": "perfil"})
+                _qp_set({"s": str(token), "tab": "perfil", "prof": None, "cli": None, "open_prof": None, "open_cli": None})
                 st.session_state.logeado = True
                 st.session_state.pantalla = "login"
                 st.session_state.submenu_actual = "perfil"
+                st.session_state.selected_profesional_id = None
+                st.session_state.selected_cliente_chat_id = None
                 if rol == "profesional":
                     st.session_state.prof_en_verificacion = True
                 st.rerun()

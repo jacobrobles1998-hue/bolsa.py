@@ -3,7 +3,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-BACKEND_API_BASE = "http://localhost:8001"
+from shared.constants import BACKEND_API_BASE, REQUEST_TIMEOUT_S
 
 
 def _build_url(path: str, params: dict | None = None, *, base_url: str | None = None) -> str:
@@ -29,7 +29,7 @@ def backend_get_json(
     params: dict | None = None,
     *,
     base_url: str | None = None,
-    timeout_s: int = 12,
+    timeout_s: int = REQUEST_TIMEOUT_S,
 ) -> dict:
     url = _build_url(path, params, base_url=base_url)
     req = Request(url, method="GET", headers={"Accept": "application/json"})
@@ -50,7 +50,7 @@ def backend_post_json(
     payload: dict,
     *,
     base_url: str | None = None,
-    timeout_s: int = 12,
+    timeout_s: int = REQUEST_TIMEOUT_S,
 ) -> dict:
     url = _build_url(path, params, base_url=base_url)
     data = json.dumps(payload).encode("utf-8")

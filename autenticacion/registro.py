@@ -3,43 +3,9 @@ import base64
 import streamlit as st
 
 from api_cliente import backend_post_json as _backend_post_json
-
-ALLOWED_CERT_MIME = {"image/png", "image/jpeg", "image/webp"}
-MAX_CERT_BYTES = 6 * 1024 * 1024
-
-
-def _sniff_image_mime(data: bytes) -> str | None:
-    if not data:
-        return None
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"\xff\xd8"):
-        return "image/jpeg"
-    if len(data) >= 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
-
-
-def _read_validated_cert(uploaded) -> tuple[bytes, str]:
-    raw = uploaded.getvalue() if uploaded is not None else b""
-    if not raw:
-        raise ValueError("El certificado está vacío.")
-    if len(raw) > MAX_CERT_BYTES:
-        raise ValueError("El certificado es demasiado grande. Máximo 6MB.")
-
-    declared = (getattr(uploaded, "type", None) or "").strip().lower()
-    sniffed = _sniff_image_mime(raw)
-    mime = sniffed or declared
-
-    if not mime or mime not in ALLOWED_CERT_MIME:
-        raise ValueError("Formato de certificado no permitido. Usa PNG, JPG/JPEG o WEBP.")
-
-    if sniffed and declared and sniffed != declared:
-        raise ValueError("El tipo de archivo no coincide con el contenido del certificado.")
-
-    return raw, mime
-
-from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
+from shared.catalogos import DEPARTAMENTOS_COLOMBIA, GENEROS, OPCIONES_SI_NO, ORIGEN_FORMACION
+from shared.catalogos_profesionales import ESPECIALIDADES_PROFESIONALES, universidades_por_especialidad
+from shared.validators import is_valid_email, validate_cert_file, validate_password
 
 def formulario_registro_profesional_ui():
     """
@@ -82,15 +48,18 @@ def formulario_registro_profesional_ui():
             confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="prof_pass_conf")
         st.markdown("---")
         st.markdown("Información personal")
-        genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="prof_genero")
+        genero = st.selectbox("Género", GENEROS, key="prof_genero")
 
         continuar = st.button("Continuar", use_container_width=True, key="prof_step1_continue")
 
         if continuar:
+            ok_pwd, pwd_error = validate_password(contrasena)
             if not nombre_completo.strip() or not correo.strip() or not contrasena.strip():
                 st.error("Por favor, llena los campos obligatorios.")
-            elif len(contrasena) < 8:
-                st.error("La contraseña debe tener mínimo 8 caracteres.")
+            elif not is_valid_email(correo):
+                st.error("Ingresa un correo electrónico válido.")
+            elif not ok_pwd:
+                st.error(pwd_error or "La contraseña no es válida.")
             elif contrasena != confirmar_contrasena:
                 st.error("Las contraseñas no coinciden.")
             else:
@@ -118,7 +87,7 @@ def formulario_registro_profesional_ui():
         with col_p1:
             especialidad = st.selectbox(
                 "Tu Especialidad Principal",
-                ["Entrenador Personal", "Nutricionista Deportivo", "Fisioterapeuta"],
+                ESPECIALIDADES_PROFESIONALES,
                 key="prof_espe",
             )
         with col_p2:
@@ -126,89 +95,28 @@ def formulario_registro_profesional_ui():
             tarifa = st.number_input("Tarifa por Sesión (COP)", min_value=10000.0, value=60000.0, step=5000.0, format="%.2f", key="prof_tarifa")
 
         st.markdown("---")
-        #  lista de institucions fisio
         universidad = None
         if especialidad == "Fisioterapeuta":
             st.markdown("Formación (Fisioterapia)")
-            universidades_fisio = [
-                "Universidad Simón Bolívar",
-                "Universidad Metropolitana",
-                "Universidad Libre",
-                "Universidad del Sinú",
-                "Universidad de Santander",
-                "Universidad de San Buenaventura",
-                "Universidad del Rosario",
-                "Universidad Nacional de Colombia",
-                "Fundación Universitaria de Ciencias de la Salud",
-                "Universidad Manuela Beltrán",
-                "Escuela Colombiana de Rehabilitación",
-                "Universidad de La Sabana",
-                "Corporación Universitaria Iberoamericana",
-                "Universidad CES",
-                "Fundación Universitaria María Cano",
-                "Universidad Autónoma de Manizales",
-                "Universidad Tecnológica de Pereira",
-                "Universidad del Quindío",
-                "Institución Universitaria Escuela Nacional del Deporte",
-                "Universidad del Valle",
-                "Universidad Santiago de Cali",
-                "Universidad Industrial de Santander",
-                "Universidad de Boyacá",
-            ]
-
-            #  lista de instituciones entrenadores
-            universidad = st.selectbox("¿Dónde estudiaste?", universidades_fisio, key="prof_uni_fisio")
-        elif especialidad == "Entrenador Personal":
-            st.markdown("Formación (Entrenamiento)")
-            origen = st.radio("Origen", ["En Colombia", "Fuera del país"], horizontal=True, key="prof_entrenador_origen")
-            if origen == "En Colombia":
-                universidades_colombia = [
-                    "Servicio Nacional de Aprendizaje (SENA)",
-                    "Universidad Santo Tomás",
-                    "Fundación Universitaria del Área Andina",
-                    "Universidad ECCI",
-                    "Institución Universitaria Escuela Nacional del Deporte",
-                ]
-                universidad = st.selectbox("En Colombia", universidades_colombia, key="prof_uni_entrenador_col")
-            else:
-                entidades_internacionales = [
-                    "National Strength and Conditioning Association (NSCA)",
-                    "International Sports Sciences Association (ISSA)",
-                    "National Academy of Sports Medicine (NASM)",
-                    "National Council on Strength and Fitness (NCSF)",
-                    "American College of Sports Medicine (ACSM)",
-                    "Escuela Colombiana de Entrenamiento y Fitness (ECEP)",
-                ]
-                # lista de instituciones nutricionistas 
-                universidad = st.selectbox("Fuera del país", entidades_internacionales, key="prof_uni_entrenador_int")
-        elif especialidad == "Nutricionista Deportivo":  # <- CORREGIDO: Coincide exactamente con tu selectbox principal
-            st.markdown("Formación (Nutrición Deportiva)")
-            origen_nutricion = st.radio("Origen", ["En Colombia", "Fuera del país"], horizontal=True, key="prof_nutricionista_origen")
-           
-           
-            if origen_nutricion == "En Colombia":
-                universidades_colombia_nutricion = [
-                    "Universidad de Ciencias Aplicadas y Ambientales (UDCA)",
-                    "Universidad Nacional de Colombia",
-                    "Universidad de Antioquia (UdeA)",
-                    "Universidad El Bosque",
-                    "Institución Universitaria Escuela Nacional del Deporte",
-                    "Universidad Pontificia Bolivariana (UPB)",
-                    "Universidad de los Andes"
-                ]
-                universidad = st.selectbox("En Colombia", universidades_colombia_nutricion, key="prof_uni_nutricionista_col")
-                
-            else:
-                entidades_internacionales_nutricion = [
-                    "Universidad Católica San Antonio de Murcia (UCAM)",
-                    "Universitat Oberta de Catalunya (UOC)",
-                    "Universidad Europea de Madrid",
-                    "Universidad de Barcelona (UB)",
-                    "International Society of Sports Nutrition (ISSN)",
-                    "National Academy of Sports Medicine (NASM)",
-                    "American Council on Exercise (ACE)"
-                ]
-                universidad = st.selectbox("Fuera del país", entidades_internacionales_nutricion, key="prof_uni_nutricionista_int")
+            universidad = st.selectbox(
+                "¿Dónde estudiaste?",
+                universidades_por_especialidad(especialidad),
+                key="prof_uni_fisio",
+            )
+        elif especialidad in {"Entrenador Personal", "Nutricionista Deportivo"}:
+            es_entrenador = especialidad == "Entrenador Personal"
+            st.markdown("Formación (Entrenamiento)" if es_entrenador else "Formación (Nutrición Deportiva)")
+            origen_formacion = st.radio(
+                "Origen",
+                ORIGEN_FORMACION,
+                horizontal=True,
+                key="prof_entrenador_origen" if es_entrenador else "prof_nutricionista_origen",
+            )
+            universidad = st.selectbox(
+                "En Colombia" if origen_formacion == "En Colombia" else "Fuera del país",
+                universidades_por_especialidad(especialidad, origen_formacion),
+                key="prof_uni_entrenador" if es_entrenador else "prof_uni_nutricionista",
+            )
        
         if "prof_cert_count" not in st.session_state:
             st.session_state.prof_cert_count = 1
@@ -257,7 +165,7 @@ def formulario_registro_profesional_ui():
                     continue
 
                 try:
-                    foto_bytes, foto_mime = _read_validated_cert(foto_obj)
+                    foto_bytes, foto_mime = validate_cert_file(foto_obj)
                 except ValueError as e:
                     st.error(str(e))
                     st.stop()
@@ -278,10 +186,10 @@ def formulario_registro_profesional_ui():
 
             try:
                 res = _backend_post_json("/auth/register_profesional", None, payload)
-            except Exception:
+            except Exception as e:
                 st.session_state.logeado = False
                 st.session_state.rol = None
-                st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
+                st.error(f"No se pudo crear el perfil: {e}")
             else:
                 if not (res or {}).get("ok"):
                     st.session_state.logeado = False
@@ -317,6 +225,10 @@ def formulario_registro_profesional_ui():
                 st.session_state.prof_reg_data = {}
                 st.session_state.logeado = False
                 st.session_state.pantalla = "foto_perfil"
+                st.session_state.submenu_actual = "perfil"
+                st.session_state.selected_profesional_id = None
+                st.session_state.selected_cliente_chat_id = None
+                st.session_state.prof_en_verificacion = True
                 st.session_state.rol = "profesional"
                 st.session_state.usuario_id = profesional_id
                 st.session_state.auth_token = token
@@ -354,8 +266,8 @@ def formulario_registro_cliente_ui():
             key="cli_ciudad",
         )
         patologia_familiar = st.selectbox(
-            "Patología Familiar", 
-            ["Si", "No"],
+            "Patología Familiar",
+            OPCIONES_SI_NO,
             key="cli_patologia"
         )
 
@@ -363,7 +275,7 @@ def formulario_registro_cliente_ui():
             correo = st.text_input("Correo electrónico", placeholder="Ej: nombre@correo.com", key="cli_correo")
             contrasena = st.text_input("Contraseña", type="password", placeholder="Mínimo 8 caracteres", key="cli_pass")
             confirmar_contrasena = st.text_input("Confirmar contraseña", type="password", placeholder="Repite la contraseña", key="cli_pass_conf")
-            genero = st.selectbox("Género", ["Masculino", "Femenino", "Otro"], key="cli_genero")
+            genero = st.selectbox("Género", GENEROS, key="cli_genero")
 
     with st.form("form_registro_largo_cliente"):
 
@@ -387,10 +299,13 @@ def formulario_registro_cliente_ui():
         boton_enviar_cli = st.form_submit_button("Crear Perfil Cliente", use_container_width=True)
         
         if boton_enviar_cli:
+            ok_pwd, pwd_error = validate_password(contrasena)
             if not nombre_completo.strip() or not correo.strip() or not contrasena.strip():
                 st.error("Por favor, llena los campos obligatorios del cliente.")
-            elif len(contrasena) < 8:
-                st.error("La contraseña debe tener mínimo 8 caracteres.")
+            elif not is_valid_email(correo):
+                st.error("Ingresa un correo electrónico válido.")
+            elif not ok_pwd:
+                st.error(pwd_error or "La contraseña no es válida.")
             elif contrasena != confirmar_contrasena:
                 st.error("Las contraseñas no coinciden.")
             else:
@@ -410,10 +325,10 @@ def formulario_registro_cliente_ui():
 
                 try:
                     res = _backend_post_json("/auth/register_cliente", None, payload)
-                except Exception:
+                except Exception as e:
                     st.session_state.logeado = False
                     st.session_state.rol = None
-                    st.error("No se pudo crear el perfil. Revisa los datos e inténtalo de nuevo.")
+                    st.error(f"No se pudo crear el perfil: {e}")
                 else:
                     if not (res or {}).get("ok"):
                         st.session_state.logeado = False
@@ -426,6 +341,10 @@ def formulario_registro_cliente_ui():
 
                     st.session_state.logeado = False
                     st.session_state.pantalla = "foto_perfil"
+                    st.session_state.submenu_actual = "perfil"
+                    st.session_state.selected_profesional_id = None
+                    st.session_state.selected_cliente_chat_id = None
+                    st.session_state.prof_en_verificacion = False
                     st.session_state.rol = "cliente"
                     st.session_state.usuario_id = cliente_id
                     st.session_state.auth_token = token

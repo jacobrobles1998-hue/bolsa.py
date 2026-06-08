@@ -1,0 +1,18 @@
+BACKEND_API_BASE = "http://localhost:8001"
+
+REQUEST_TIMEOUT_S = 12
+
+CACHE_TTL_SHORT = 8
+CACHE_TTL_MEDIUM = 20
+CACHE_TTL_STANDARD = 30
+
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+MAX_CERT_BYTES = 6 * 1024 * 1024
+
+ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
+ALLOWED_CERT_MIME = {"image/png", "image/jpeg", "image/webp"}
+
+QUERY_PARAM_TOKEN = "s"
+QUERY_PARAM_TAB = "tab"
+
+DEFAULT_INBOX_LIMIT = 60

@@ -4,43 +4,8 @@ import html
 import streamlit as st
 
 from api_cliente import backend_post_json as _backend_post_json
-from basededatos.manejarbasededatos import DEPARTAMENTOS_COLOMBIA
-
-
-ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
-MAX_IMAGE_BYTES = 3 * 1024 * 1024
-
-
-def _sniff_image_mime(data: bytes) -> str | None:
-    if not data:
-        return None
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if data[:12].startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
-
-
-def _read_validated_image(uploaded) -> tuple[bytes, str]:
-    raw = uploaded.getvalue() if uploaded is not None else b""
-    if not raw:
-        raise ValueError("La imagen está vacía.")
-    if len(raw) > MAX_IMAGE_BYTES:
-        raise ValueError("La imagen es demasiado grande. Máximo 3MB.")
-
-    declared = (getattr(uploaded, "type", None) or "").strip().lower()
-    sniffed = _sniff_image_mime(raw)
-    mime = sniffed or declared
-
-    if not mime or mime not in ALLOWED_IMAGE_MIME:
-        raise ValueError("Formato de imagen no permitido. Usa PNG, JPG/JPEG o WEBP.")
-
-    if sniffed and declared and sniffed != declared:
-        raise ValueError("El tipo de archivo no coincide con el contenido de la imagen.")
-
-    return raw, mime
+from shared.catalogos import DEPARTAMENTOS_COLOMBIA, GENEROS, OPCIONES_SI_NO
+from shared.validators import is_valid_phone, validate_image_file
 
 
 def _mostrar_campo(etiqueta: str, valor, unidad: str = "", *, uid: int = 0):
@@ -228,7 +193,7 @@ def configuraciones_cliente_view(datos_usuario):
         key=f"cli_cfg_foto_save_{uid}",
     ):
         try:
-            foto_bytes, foto_mime = _read_validated_image(up)
+            foto_bytes, foto_mime = validate_image_file(up)
             token = st.session_state.get("auth_token")
             if not token:
                 raise RuntimeError("Sesión no encontrada. Vuelve a iniciar sesión.")
@@ -278,9 +243,12 @@ def configuraciones_cliente_view(datos_usuario):
         key=f"cli_cfg_ciudad_{uid}",
     )
 
-    genero_new = st.text_input(
+    genero_actual = str(datos_usuario.get("genero") or "")
+    genero_opts = GENEROS if genero_actual in GENEROS or not genero_actual else [genero_actual, *GENEROS]
+    genero_new = st.selectbox(
         "Género",
-        value=str(datos_usuario.get("genero") or ""),
+        genero_opts,
+        index=genero_opts.index(genero_actual) if genero_actual in genero_opts else 0,
         key=f"cli_cfg_genero_{uid}",
     )
 
@@ -313,9 +281,12 @@ def configuraciones_cliente_view(datos_usuario):
         key=f"cli_cfg_peso_{uid}",
     )
 
-    patologia_new = st.text_input(
+    patologia_actual = str(datos_usuario.get("patologia_familiar") or "")
+    patologia_opts = OPCIONES_SI_NO if patologia_actual in OPCIONES_SI_NO or not patologia_actual else [patologia_actual, *OPCIONES_SI_NO]
+    patologia_new = st.selectbox(
         "Patología familiar",
-        value=str(datos_usuario.get("patologia_familiar") or ""),
+        patologia_opts,
+        index=patologia_opts.index(patologia_actual) if patologia_actual in patologia_opts else 0,
         key=f"cli_cfg_pat_{uid}",
     )
 
@@ -327,9 +298,14 @@ def configuraciones_cliente_view(datos_usuario):
     )
 
     if st.button("Guardar cambios", use_container_width=True, key=f"cli_cfg_save_{uid}"):
+        telefono_limpio = (telefono_new or "").strip()
+        if telefono_limpio and not is_valid_phone(telefono_limpio):
+            st.error("Ingresa un teléfono válido.")
+            st.stop()
+
         cambios = {
             "nombre": (nombre_new or "").strip() or None,
-            "telefono": (telefono_new or "").strip() or None,
+            "telefono": telefono_limpio or None,
             "departamento": (depto_sel or "").strip() or None,
             "ciudad": (ciudad_new or "").strip() or None,
             "genero": (genero_new or "").strip() or None,
