@@ -7,3 +7,5 @@ __pycache__/
 # Otros archivos basura
 .DS_Store
 .env
+.venv/
+*.db
