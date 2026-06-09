@@ -23,25 +23,22 @@ def barra_navegacion_glass():
             top: 25px;
             left: 5%;
             width: 90%;
-            background-color: #F0F2F5 !important; /* Color gris claro idéntico a la foto base */
-            border-radius: 28px !important; /* Bordes ultra suavizados */
-            padding: 12px 24px !important;
+            background-color: #F0F2F5 !important;
+            border-radius: 28px !important;
+            padding: 12px 24px 16px !important;
             z-index: 99999 !important;
-            
-            /* 🚀 SISTEMA DE SOMBRAS COMBINADAS (Simula la distancia real con el fondo) */
             box-shadow: 
                 0px 20px 40px rgba(165, 175, 191, 0.45), 
                 0px 8px 16px rgba(0, 0, 0, 0.04),
                 inset 1px 1px 0px rgba(255, 255, 255, 0.8) !important;
-            
-            display: flex;
-            align-items: center;
+            display: block;
             border: 1px solid rgba(226, 232, 240, 0.8) !important;
         }
+        .premium-nav-search-row{margin-bottom:10px;}
+        .premium-nav-buttons-row{display:block;}
 
-        /* Espaciado del cuerpo de la app para que la barra no pise los datos */
         .block-container {
-            padding-top: 130px !important;
+            padding-top: 170px !important;
         }
 
         /* Pestaña seleccionada: Inicio (antracita, como en la barra) */
@@ -118,6 +115,44 @@ def barra_navegacion_glass():
             display: block;
             margin: 0 auto;
         }
+
+        .st-key-nav_more_toggle button {
+            width: 44px !important;
+            height: 44px !important;
+            min-width: 44px !important;
+            border-radius: 14px !important;
+            background: #F1F5F9 !important;
+            border: 1px solid rgba(15,23,42,.10) !important;
+            box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
+            padding: 0 !important;
+            color: #0F172A !important;
+            font-size: 22px !important;
+            font-weight: 800 !important;
+            line-height: 1 !important;
+        }
+
+        .st-key-nav_more_settings button,
+        .st-key-nav_more_profile button {
+            border-radius: 12px !important;
+            background: #0B1220 !important;
+            border: 1px solid rgba(255,255,255,.08) !important;
+            color: #E2E8F0 !important;
+            box-shadow: 0 16px 40px rgba(2,6,23,.28) !important;
+            padding: 10px 12px !important;
+            font-weight: 600 !important;
+        }
+
+        .st-key-nav_more_settings button {
+            border-bottom-left-radius: 6px !important;
+            border-bottom-right-radius: 6px !important;
+            margin-bottom: 6px !important;
+        }
+
+        .st-key-nav_more_profile button {
+            border-top-left-radius: 6px !important;
+            border-top-right-radius: 6px !important;
+        }
+
         </style>
             """,
             unsafe_allow_html=True
@@ -191,10 +226,22 @@ def barra_navegacion_glass():
 
     with st.container():
         st.markdown('<div class="premium-nav-container">', unsafe_allow_html=True)
-        
-        col_dots, col_1, col_2, col_3, col_search, col_actions = st.columns([0.5, 1.05, 1.05, 1.05, 2.35, 0.95])
+        st.markdown('<div class="premium-nav-search-row">', unsafe_allow_html=True)
+        _, col_search, _ = st.columns([0.5, 3.15, 3.30])
 
-        # Puntos decorativos estilo Mac de la esquina izquierda
+        # Buscador Neumórfico Integrado
+        with col_search:
+            st.text_input(
+                "BUSCADOR_NAV",
+                key="nav_search",
+                placeholder="Escribe tu necesidad: rodilla, hombro, masa muscular, bajar de peso...",
+                label_visibility="collapsed",
+                on_change=_on_search_change,
+            )
+
+        st.markdown('</div><div class="premium-nav-buttons-row">', unsafe_allow_html=True)
+        col_dots, col_1, col_2, col_3, col_more, _ = st.columns([0.5, 1.05, 1.05, 1.05, 0.28, 3.07])
+
         with col_dots:
             st.markdown(
                 """
@@ -203,8 +250,8 @@ def barra_navegacion_glass():
                     <span style='width: 9px; height: 9px; background: #FFBD2E; border-radius: 50%; display: inline-block;'></span>
                     <span style='width: 9px; height: 9px; background: #27C93F; border-radius: 50%; display: inline-block;'></span>
                 </div>
-                """, 
-                unsafe_allow_html=True
+                """,
+                unsafe_allow_html=True,
             )
 
         # Botón 1: Inicio (Fuerza el estilo sólido oscuro si está seleccionado)
@@ -213,6 +260,7 @@ def barra_navegacion_glass():
             st.markdown(f'<div class="{is_active}">', unsafe_allow_html=True)
             if st.button("Inicio", key="nav_p_inicio", use_container_width=True):
                 st.session_state.submenu_actual = "Inicio"
+                st.session_state.nav_more_open = False
                 if "selected_profesional_id" in st.session_state:
                     st.session_state.selected_profesional_id = None
                 if "selected_cliente_chat_id" in st.session_state:
@@ -226,6 +274,7 @@ def barra_navegacion_glass():
             st.markdown(f'<div class="{is_active}">', unsafe_allow_html=True)
             if st.button("Mensajes", key="nav_p_mensajes", use_container_width=True):
                 st.session_state.submenu_actual = "Mensajes"
+                st.session_state.nav_more_open = False
                 _qp_set({"tab": "Mensajes"})
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -235,83 +284,38 @@ def barra_navegacion_glass():
             st.markdown(f'<div class="{is_active}">', unsafe_allow_html=True)
             if st.button("Contratos", key="nav_p_contratos", use_container_width=True):
                 st.session_state.submenu_actual = "Contratos"
+                st.session_state.nav_more_open = False
                 _qp_set({"tab": "Contratos"})
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # Buscador Neumórfico Integrado
-        with col_search:
-            st.text_input(
-                "BUSCADOR_NAV",
-                key="nav_search",
-                placeholder="Escribe tu necesidad: rodilla, hombro, masa muscular, bajar de peso...",
-                label_visibility="collapsed",
-                on_change=_on_search_change,
-            )
+        with col_more:
+            if "nav_more_open" not in st.session_state:
+                st.session_state.nav_more_open = False
 
-        with col_actions:
-            gear_svg = (
-                "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
-                "<path fill='#334155' d='M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z'/>"
-                "</svg>"
-            )
-            user_svg = (
-                "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
-                "<path fill='#334155' d='M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5Zm0 2c-4.42 0-8 2.24-8 5v1c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-1c0-2.76-3.58-5-8-5Z'/>"
-                "</svg>"
-            )
-            gear_src = f"data:image/svg+xml;base64,{base64.b64encode(gear_svg.encode('utf-8')).decode('ascii')}"
-            user_src = f"data:image/svg+xml;base64,{base64.b64encode(user_svg.encode('utf-8')).decode('ascii')}"
+            if st.button("⋮", key="nav_more_toggle"):
+                st.session_state.nav_more_open = not bool(st.session_state.nav_more_open)
 
-            st.markdown(
-                f"""
-                <style>
-                .st-key-nav_settings button {{
-                    width: 52px !important;
-                    height: 52px !important;
-                    min-width: 52px !important;
-                    border-radius: 16px !important;
-                    background: #F8FAFC url(\"{gear_src}\") center/22px 22px no-repeat !important;
-                    border: 1px solid rgba(15,23,42,.08) !important;
-                    box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
-                    color: transparent !important;
-                    font-size: 0 !important;
-                    padding: 0 !important;
-                }}
-                .st-key-nav_profile button {{
-                    width: 60px !important;
-                    height: 60px !important;
-                    min-width: 60px !important;
-                    border-radius: 50% !important;
-                    background: #F8FAFC url(\"{user_src}\") center/26px 26px no-repeat !important;
-                    border: 2px solid #FFFFFF !important;
-                    box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
-                    color: transparent !important;
-                    font-size: 0 !important;
-                    padding: 0 !important;
-                }}
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            c_set, c_prof = st.columns([0.46, 0.54])
-            with c_set:
-                if st.button("\u00a0", key="nav_settings", help="Configuraciones"):
+            if st.session_state.nav_more_open:
+                if st.button("Configuraciones", use_container_width=True, key="nav_more_settings"):
                     st.session_state.submenu_actual = "Configuraciones"
+                    st.session_state.nav_more_open = False
                     if "selected_profesional_id" in st.session_state:
                         st.session_state.selected_profesional_id = None
                     if "selected_cliente_chat_id" in st.session_state:
                         st.session_state.selected_cliente_chat_id = None
-                    _qp_set({"tab": "Configuraciones"})
-            with c_prof:
-                if st.button("\u00a0", key="nav_profile", help="Ver mi perfil"):
+                    _qp_set({"tab": "Configuraciones", "prof": None, "cli": None})
+                    st.rerun()
+
+                if st.button("Perfil", use_container_width=True, key="nav_more_profile"):
                     st.session_state.submenu_actual = "perfil"
+                    st.session_state.nav_more_open = False
                     if "selected_profesional_id" in st.session_state:
                         st.session_state.selected_profesional_id = None
                     if "selected_cliente_chat_id" in st.session_state:
                         st.session_state.selected_cliente_chat_id = None
                     _qp_set({"tab": "perfil", "prof": None, "cli": None})
+                    st.rerun()
 
         token_badge = st.session_state.get("auth_token") or _qp_all().get("s")
-        if token_badge and st.session_state.get("logeado"):
+        if token_badge and st.session_state.get("logeado") and st.session_state.get("submenu_actual") != "Mensajes":
             render_nav_badge_listener(token=str(token_badge))

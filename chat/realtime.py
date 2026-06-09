@@ -1,5 +1,6 @@
 import json
 import streamlit.components.v1 as components
+from shared.constants import BACKEND_API_BASE, INBOX_RELOAD_THROTTLE_MS, UNREAD_POLL_INTERVAL_MS
 
 
 def render_realtime_chat(
@@ -9,7 +10,7 @@ def render_realtime_chat(
     cliente_id: int,
     profesional_id: int,
     height: int = 640,
-    backend_url: str = "http://127.0.0.1:8000",
+    backend_url: str = BACKEND_API_BASE,
 ):
     token = (token or "").strip()
     rol = (rol or "").strip().lower()
@@ -110,7 +111,13 @@ def render_realtime_chat(
       margin-top: 6px;
       font-size: 11px;
       color: var(--muted);
+      display:flex;
+      align-items:center;
+      gap:6px;
+      justify-content:flex-end;
     }}
+    .seen-ticks{{font-size:12px; letter-spacing:-1px; color:#94a3b8; font-weight:900;}}
+    .seen-ticks.is-seen{{color:#0ea5e9;}}
     .composer {{
       display:flex;
       gap: 10px;
@@ -202,6 +209,8 @@ def render_realtime_chat(
 
     const row = document.createElement("div");
     row.className = "row " + (isMe ? "me" : "them");
+    row.dataset.createdAt = String(m.created_at || "");
+    row.dataset.isMe = isMe ? "1" : "0";
 
     const bubble = document.createElement("div");
     bubble.className = "bubble";
@@ -209,7 +218,17 @@ def render_realtime_chat(
 
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = fmt(m.created_at);
+
+    const timeEl = document.createElement("span");
+    timeEl.textContent = fmt(m.created_at);
+    meta.appendChild(timeEl);
+
+    if (isMe) {{
+      const seenEl = document.createElement("span");
+      seenEl.className = "seen-ticks" + ((m.seen === true || m.seen === 1) ? " is-seen" : "");
+      seenEl.textContent = "✓✓";
+      meta.appendChild(seenEl);
+    }}
 
     const box = document.createElement("div");
     box.appendChild(bubble);
@@ -217,6 +236,25 @@ def render_realtime_chat(
 
     row.appendChild(box);
     msgsEl.appendChild(row);
+  }}
+
+  function emitSeenNow() {{
+    socket.emit("mark_seen", {{
+      cliente_id: CFG.cliente_id,
+      profesional_id: CFG.profesional_id,
+      limit: 120
+    }});
+  }}
+
+  function applySeenUpdate(seenAt, readerRol) {{
+    if (!seenAt) return;
+    const rows = msgsEl.querySelectorAll('.row[data-is-me="1"]');
+    rows.forEach((row) => {{
+      const createdAt = row.dataset.createdAt || "";
+      if (!createdAt || createdAt > seenAt) return;
+      const ticks = row.querySelector('.seen-ticks');
+      if (ticks) ticks.classList.add('is-seen');
+    }});
   }}
 
   function renderHistory(items) {{
@@ -265,6 +303,16 @@ def render_realtime_chat(
     if (parseInt(m.profesional_id, 10) !== CFG.profesional_id) return;
     addMsg(m);
     scrollBottom();
+    const senderRol = (m.sender_rol || "").toLowerCase();
+    if (senderRol && senderRol !== CFG.rol) emitSeenNow();
+  }});
+
+  socket.on("seen_update", (data) => {{
+    if (!data) return;
+    if (parseInt(data.cliente_id, 10) !== CFG.cliente_id) return;
+    if (parseInt(data.profesional_id, 10) !== CFG.profesional_id) return;
+    if ((data.reader_rol || "").toLowerCase() === CFG.rol) return;
+    applySeenUpdate(data.seen_at, data.reader_rol);
   }});
 
   function sendNow() {{
@@ -294,8 +342,8 @@ def render_realtime_chat(
 def render_nav_badge_listener(
     *,
     token: str,
-    backend_url: str = "http://localhost:8001",
-    interval_ms: int = 1500,
+    backend_url: str = BACKEND_API_BASE,
+    interval_ms: int = UNREAD_POLL_INTERVAL_MS,
 ):
     token = (token or "").strip()
     if not token:
@@ -403,8 +451,8 @@ def render_button_badge_listener(
     *,
     token: str,
     button_key: str,
-    backend_url: str = "http://localhost:8001",
-    interval_ms: int = 1500,
+    backend_url: str = BACKEND_API_BASE,
+    interval_ms: int = UNREAD_POLL_INTERVAL_MS,
 ):
     token = (token or "").strip()
     if not token:
@@ -514,8 +562,8 @@ def render_tab_badge_listener(
     *,
     token: str,
     tab_text: str,
-    backend_url: str = "http://localhost:8001",
-    interval_ms: int = 1500,
+    backend_url: str = BACKEND_API_BASE,
+    interval_ms: int = UNREAD_POLL_INTERVAL_MS,
 ):
     token = (token or "").strip()
     tab_text = (tab_text or "").strip()
@@ -628,8 +676,9 @@ def render_inbox_listener(
     token: str,
     rol: str,
     user_id: int,
-    backend_url: str = "http://localhost:8001",
+    backend_url: str = BACKEND_API_BASE,
     disable_reload: bool = False,
+    rerun_button_key: str | None = None,
 ):
     token = (token or "").strip()
     rol = (rol or "").strip().lower()
@@ -644,6 +693,7 @@ def render_inbox_listener(
         "rol": rol,
         "user_id": int(user_id),
         "disable_reload": bool(disable_reload),
+        "rerun_button_key": (rerun_button_key or "").strip() or None,
     }
 
     html = f"""
@@ -658,6 +708,8 @@ def render_inbox_listener(
 <script>
   const CFG = {json.dumps(payload)};
   let pending = false;
+  const THROTTLE_MS = {int(INBOX_RELOAD_THROTTLE_MS)};
+  const throttleKey = 'axon_inbox_reload_' + String(CFG.rol) + '_' + String(CFG.user_id);
 
   const socket = io(CFG.backend_url, {{
     transports: [\"websocket\"],
@@ -678,8 +730,26 @@ def render_inbox_listener(
       if (pid !== parseInt(CFG.user_id, 10)) return;
     }}
 
+    try {{
+      const now = Date.now();
+      const last = parseInt(sessionStorage.getItem(throttleKey) || '0', 10);
+      if (last && (now - last) < THROTTLE_MS) return;
+      sessionStorage.setItem(throttleKey, String(now));
+    }} catch (e) {{}}
+
     pending = true;
     setTimeout(() => {{
+      if (CFG.rerun_button_key) {{
+        try {{
+          const d = window.parent?.document || document;
+          const host = d.querySelector('.st-key-' + CSS.escape(CFG.rerun_button_key));
+          const btn = host ? host.querySelector('button') : null;
+          if (btn) {{
+            btn.click();
+            return;
+          }}
+        }} catch (e) {{}}
+      }}
       try {{
         window.parent.location.reload();
       }} catch (e) {{

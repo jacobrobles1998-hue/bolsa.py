@@ -88,10 +88,24 @@ async def list_messages(*, cliente_id: int, profesional_id: int, limit: int = 50
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, conv_id, cliente_id, profesional_id, sender_rol, sender_id, texto, created_at
-            FROM mensajes
-            WHERE conv_id = ?
-            ORDER BY created_at DESC
+            SELECT
+                m.id,
+                m.conv_id,
+                m.cliente_id,
+                m.profesional_id,
+                m.sender_rol,
+                m.sender_id,
+                m.texto,
+                m.created_at,
+                CASE
+                    WHEN m.sender_rol = 'cliente' AND COALESCE(v.last_read_pro_at, '') >= m.created_at THEN 1
+                    WHEN m.sender_rol = 'profesional' AND COALESCE(v.last_read_cli_at, '') >= m.created_at THEN 1
+                    ELSE 0
+                END AS seen
+            FROM mensajes m
+            LEFT JOIN conversaciones v ON v.conv_id = m.conv_id
+            WHERE m.conv_id = ?
+            ORDER BY m.created_at DESC
             LIMIT ?
             """,
             (conv_id, limit),

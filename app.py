@@ -89,7 +89,18 @@ def _img_src(foto_bytes, mime: str | None):
 _INBOX_CSS = """
 <style>
 .axon-inbox {max-width: 780px; margin: 0 auto;}
-.axon-inbox a{ text-decoration: none !important; }
+.axon-inbox a,
+.axon-inbox a:visited,
+.axon-inbox a:hover,
+.axon-inbox a:active,
+.axon-inbox-item,
+.axon-inbox-item:hover,
+.axon-inbox-item:visited,
+.axon-inbox-item:active,
+.axon-inbox-item *,
+.axon-inbox-item *:hover,
+.axon-inbox-item *:visited,
+.axon-inbox-item *:active{ color: inherit !important; text-decoration: none !important; }
 .axon-inbox-item{display:flex; align-items:center; gap:14px; padding:12px 10px; border-radius:16px; border:1px solid rgba(15,23,42,.06); background:rgba(255,255,255,.92); box-shadow:0 10px 24px rgba(15,23,42,.06);}
 .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
 .axon-inbox-avatar{width:56px; height:56px; border-radius:999px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#e2e8f0; border:3px solid rgba(148,163,184,.55); flex:0 0 56px;}
@@ -109,9 +120,47 @@ _INBOX_CSS = """
 
 
 def _ensure_inbox_css():
-    if not st.session_state.get("_inbox_css_injected"):
-        st.session_state["_inbox_css_injected"] = True
-        st.markdown(_INBOX_CSS, unsafe_allow_html=True)
+    st.markdown(_INBOX_CSS, unsafe_allow_html=True)
+
+
+def _render_hidden_rerun_button(button_key: str):
+    st.markdown(
+        f"""
+        <style>
+        .st-key-{button_key}{{position:fixed !important;left:-9999px !important;top:0 !important;width:1px !important;height:1px !important;opacity:0 !important;pointer-events:none !important;}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.button("↻", key=button_key)
+
+
+def _render_axon_inbox(convs: list[dict], *, href_builder, id_key: str, empty_text: str, default_name: str):
+    st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
+    if not convs:
+        st.info(empty_text)
+    else:
+        for it in convs:
+            item_id = int(it.get(id_key) or 0)
+            nombre = (it.get("nombre") or default_name).strip() or default_name
+            last_texto = shorten_text(it.get("last_texto"), 56)
+            last_at = format_datetime_short(it.get("last_at"))
+            unread = int(it.get("unread") or 0)
+            foto_b64 = it.get("foto_b64")
+            mime = it.get("foto_mime")
+            src = f"data:{((mime or 'image/jpeg').strip() or 'image/jpeg')};base64,{foto_b64}" if foto_b64 else None
+            avatar_html = f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(initials(nombre))}</div>"
+            badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
+            item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"
+            st.markdown(f"""
+                <a class=\"{item_cls}\" href=\"{_h(href_builder(item_id))}\" target=\"_self\" onclick=\"event.preventDefault(); window.parent.location.href=this.href;\">
+                  <div class=\"axon-inbox-avatar\">{avatar_html}</div>
+                  <div class=\"axon-inbox-body\"><div class=\"axon-inbox-title\">{_h(nombre)}</div><div class=\"axon-inbox-sub\">{_h(last_texto or '—')}</div></div>
+                  <div class=\"axon-inbox-meta\"><div class=\"axon-inbox-time\">{_h(last_at)}</div>{badge_html}</div>
+                </a>
+                <div class=\"axon-inbox-sep\"></div>
+                """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _api_decode_foto(item: dict | None) -> dict:
@@ -683,50 +732,16 @@ if st.session_state.logeado:
                 pid = st.session_state.get("selected_profesional_id")
 
                 if pid is None:
-                    render_inbox_listener(token=str(token_chat), rol="cliente", user_id=int(usuario_id))
-                    st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
-                    if not convs:
-                        st.info("Aún no tienes conversaciones.")
-                    else:
-                        for it in convs:
-                            prof_id = int(it.get("profesional_id") or 0)
-                            nombre = (it.get("nombre") or "Profesional").strip() or "Profesional"
-                            last_texto = shorten_text(it.get("last_texto"), 56)
-                            last_at = format_datetime_short(it.get("last_at"))
-                            unread = int(it.get("unread") or 0)
-
-                            foto_b64 = it.get("foto_b64")
-                            mime = it.get("foto_mime")
-                            src = None
-                            if foto_b64:
-                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                src = f"data:{mt};base64,{foto_b64}"
-
-                            avatar_html = (
-                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(initials(nombre))}</div>"
-                            )
-                            badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
-                            item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"
-
-                            st.markdown(
-                                f"""
-                                <a class="{item_cls}" href="{_h(_href_open_prof(prof_id))}" target="_self" onclick="event.preventDefault(); window.parent.location.href=this.href;">
-                                  <div class="axon-inbox-avatar">{avatar_html}</div>
-                                  <div class="axon-inbox-body">
-                                    <div class="axon-inbox-title">{_h(nombre)}</div>
-                                    <div class="axon-inbox-sub">{_h(last_texto or '—')}</div>
-                                  </div>
-                                  <div class="axon-inbox-meta">
-                                    <div class="axon-inbox-time">{_h(last_at)}</div>
-                                    {badge_html}
-                                  </div>
-                                </a>
-                                <div class="axon-inbox-sep"></div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
-
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    refresh_key = f"inbox_refresh_cli_{int(usuario_id)}"
+                    _render_hidden_rerun_button(refresh_key)
+                    render_inbox_listener(token=str(token_chat), rol="cliente", user_id=int(usuario_id), rerun_button_key=refresh_key)
+                    _render_axon_inbox(
+                        convs,
+                        href_builder=_href_open_prof,
+                        id_key="profesional_id",
+                        empty_text="Aún no tienes conversaciones.",
+                        default_name="Profesional",
+                    )
                 else:
                     pid = int(pid)
 
@@ -773,50 +788,16 @@ if st.session_state.logeado:
                 cid = st.session_state.get("selected_cliente_chat_id")
 
                 if cid is None:
-                    render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(usuario_id))
-                    st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
-                    if not convs:
-                        st.info("Aún no tienes conversaciones.")
-                    else:
-                        for it in convs:
-                            cli_id = int(it.get("cliente_id") or 0)
-                            nombre = (it.get("nombre") or "Cliente").strip() or "Cliente"
-                            last_texto = shorten_text(it.get("last_texto"), 56)
-                            last_at = format_datetime_short(it.get("last_at"))
-                            unread = int(it.get("unread") or 0)
-
-                            foto_b64 = it.get("foto_b64")
-                            mime = it.get("foto_mime")
-                            src = None
-                            if foto_b64:
-                                mt = (mime or "image/jpeg").strip() or "image/jpeg"
-                                src = f"data:{mt};base64,{foto_b64}"
-
-                            avatar_html = (
-                                f"<img src='{_h(src)}' alt='{_h(nombre)}' />" if src else f"<div class='ini'>{_h(initials(nombre))}</div>"
-                            )
-                            badge_html = f"<div class='axon-inbox-badge'>{unread}</div>" if unread > 0 else ""
-                            item_cls = "axon-inbox-item unread" if unread > 0 else "axon-inbox-item"
-
-                            st.markdown(
-                                f"""
-                                <a class="{item_cls}" href="{_h(_href_open_cli(cli_id))}" target="_self" onclick="event.preventDefault(); window.parent.location.href=this.href;">
-                                  <div class="axon-inbox-avatar">{avatar_html}</div>
-                                  <div class="axon-inbox-body">
-                                    <div class="axon-inbox-title">{_h(nombre)}</div>
-                                    <div class="axon-inbox-sub">{_h(last_texto or '—')}</div>
-                                  </div>
-                                  <div class="axon-inbox-meta">
-                                    <div class="axon-inbox-time">{_h(last_at)}</div>
-                                    {badge_html}
-                                  </div>
-                                </a>
-                                <div class="axon-inbox-sep"></div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
-
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    refresh_key = f"inbox_refresh_pro_{int(usuario_id)}"
+                    _render_hidden_rerun_button(refresh_key)
+                    render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(usuario_id), rerun_button_key=refresh_key)
+                    _render_axon_inbox(
+                        convs,
+                        href_builder=_href_open_cli,
+                        id_key="cliente_id",
+                        empty_text="Aún no tienes conversaciones.",
+                        default_name="Cliente",
+                    )
                 else:
                     cid = int(cid)
 
@@ -962,6 +943,7 @@ if st.session_state.logeado:
         st.session_state.submenu_actual = "Mensajes"
         _qp_set({"tab": "Mensajes"})
         st.rerun()
+        st.stop()
         token_chat = st.session_state.get("auth_token") or _qp_get("s")
         if not token_chat:
             st.info("Inicia sesión para ver tus mensajes.")

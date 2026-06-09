@@ -22,7 +22,18 @@ def _h(value) -> str:
 _INBOX_CSS = """
 <style>
 .axon-inbox {max-width: 780px; margin: 0 auto;}
-.axon-inbox a{ text-decoration: none !important; }
+.axon-inbox a,
+.axon-inbox a:visited,
+.axon-inbox a:hover,
+.axon-inbox a:active,
+.axon-inbox-item,
+.axon-inbox-item:hover,
+.axon-inbox-item:visited,
+.axon-inbox-item:active,
+.axon-inbox-item *,
+.axon-inbox-item *:hover,
+.axon-inbox-item *:visited,
+.axon-inbox-item *:active{ color: inherit !important; text-decoration: none !important; }
 .axon-inbox-item{display:flex; align-items:center; gap:14px; padding:12px 10px; border-radius:16px; border:1px solid rgba(15,23,42,.06); background:rgba(255,255,255,.92); box-shadow:0 10px 24px rgba(15,23,42,.06);}
 .axon-inbox-item:hover{ background: rgba(248,250,252,1); }
 .axon-inbox-avatar{width:56px; height:56px; border-radius:999px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#e2e8f0; border:3px solid rgba(148,163,184,.55); flex:0 0 56px;}
@@ -41,9 +52,19 @@ _INBOX_CSS = """
 
 
 def _ensure_inbox_css():
-    if not st.session_state.get("_prof_inbox_css_injected"):
-        st.session_state["_prof_inbox_css_injected"] = True
-        st.markdown(_INBOX_CSS, unsafe_allow_html=True)
+    st.markdown(_INBOX_CSS, unsafe_allow_html=True)
+
+
+def _render_hidden_rerun_button(button_key: str):
+    st.markdown(
+        f"""
+        <style>
+        .st-key-{button_key}{{position:fixed !important;left:-9999px !important;top:0 !important;width:1px !important;height:1px !important;opacity:0 !important;pointer-events:none !important;}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.button("↻", key=button_key)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -634,17 +655,69 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
             animation: synapseFade .18s ease-in-out;
         }
         @keyframes synapseFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+        .st-key-pro_more_toggle button{
+            width: 44px !important;
+            height: 44px !important;
+            min-width: 44px !important;
+            border-radius: 14px !important;
+            background: #F1F5F9 !important;
+            border: 1px solid rgba(15,23,42,.10) !important;
+            box-shadow: 3px 3px 6px #CBD5E1, -2px -2px 5px #FFFFFF !important;
+            padding: 0 !important;
+            color: #0F172A !important;
+            font-size: 22px !important;
+            font-weight: 800 !important;
+            line-height: 1 !important;
+        }
+
+        .st-key-pro_more_settings button,
+        .st-key-pro_more_profile button{
+            border-radius: 12px !important;
+            background: #0B1220 !important;
+            border: 1px solid rgba(255,255,255,.08) !important;
+            color: #E2E8F0 !important;
+            box-shadow: 0 16px 40px rgba(2,6,23,.28) !important;
+            padding: 10px 12px !important;
+            font-weight: 700 !important;
+        }
+
+        .st-key-pro_more_settings button{margin-bottom: 6px !important;}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    if (owner or editable) and uid:
-        tab_info, tab_media, tab_msg = st.tabs(["Información", "Multimedia", "Mensaje"])
-        token_badge = st.session_state.get("auth_token") or _qp_get("s")
-        if token_badge:
-            render_tab_badge_listener(token=str(token_badge), tab_text="Mensaje")
+    if "pro_more_open" not in st.session_state:
+        st.session_state.pro_more_open = False
 
+    _, col_more = st.columns([0.86, 0.14])
+    with col_more:
+        if st.button("⋮", key="pro_more_toggle"):
+            st.session_state.pro_more_open = not bool(st.session_state.pro_more_open)
+
+        if st.session_state.pro_more_open:
+            if st.button("Configuraciones", use_container_width=True, key="pro_more_settings"):
+                st.session_state.submenu_actual = "Configuraciones"
+                st.session_state.pro_more_open = False
+                if "selected_profesional_id" in st.session_state:
+                    st.session_state.selected_profesional_id = None
+                if "selected_cliente_chat_id" in st.session_state:
+                    st.session_state.selected_cliente_chat_id = None
+                _qp_set({"tab": "Configuraciones", "prof": None, "cli": None})
+                st.rerun()
+
+            if st.button("Perfil", use_container_width=True, key="pro_more_profile"):
+                st.session_state.submenu_actual = "perfil"
+                st.session_state.pro_more_open = False
+                if "selected_profesional_id" in st.session_state:
+                    st.session_state.selected_profesional_id = None
+                if "selected_cliente_chat_id" in st.session_state:
+                    st.session_state.selected_cliente_chat_id = None
+                _qp_set({"tab": "perfil", "prof": None, "cli": None})
+                st.rerun()
+
+    if (owner or editable) and uid:
         open_cid = _qp_get("open_cli")
         if open_cid:
             try:
@@ -652,45 +725,17 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
             except Exception:
                 pass
 
-            components.html(
-                """
-                <script>
-                (function () {
-                  function findAndClickMensajeTab() {
-                    try {
-                      const d = window.parent?.document || document;
-                      const tabs = d.querySelectorAll('div[data-testid="stTabs"] [data-baseweb="tab"]');
-                      for (const t of tabs) {
-                        const txt = (t.textContent || '').trim();
-                        if (!txt) continue;
-                        if (txt === 'Mensaje' || txt.startsWith('Mensaje')) {
-                          t.click();
-                          break;
-                        }
-                      }
-                    } catch (e) {}
-                  }
+        abrir_chat_directo = bool(open_cid or st.session_state.get("selected_cliente_chat_id"))
+        tab_labels = ["Mensaje", "Información", "Multimedia"] if abrir_chat_directo else ["Información", "Multimedia", "Mensaje"]
+        tabs = st.tabs(tab_labels)
+        tab_map = dict(zip(tab_labels, tabs))
+        tab_info = tab_map["Información"]
+        tab_media = tab_map["Multimedia"]
+        tab_msg = tab_map["Mensaje"]
 
-                  function clearOpenCliParam() {
-                    try {
-                      const w = window.parent || window;
-                      const u = new URL(w.location.href);
-                      if (u.searchParams.has('open_cli')) {
-                        u.searchParams.delete('open_cli');
-                        w.history.replaceState({}, '', u.toString());
-                      }
-                    } catch (e) {}
-                  }
-
-                  setTimeout(function () {
-                    findAndClickMensajeTab();
-                    clearOpenCliParam();
-                  }, 50);
-                })();
-                </script>
-                """,
-                height=0,
-            )
+        token_badge = st.session_state.get("auth_token") or _qp_get("s")
+        if token_badge:
+            render_tab_badge_listener(token=str(token_badge), tab_text="Mensaje")
     else:
         tab_info, tab_media = st.tabs(["Información", "Multimedia"])
         tab_msg = None
@@ -944,7 +989,9 @@ def perfil_profesional_view(datos, *, editable: bool = False, owner: bool = Fals
                 cid = st.session_state.get("selected_cliente_chat_id")
 
                 if cid is None:
-                    render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(uid))
+                    refresh_key = f"inbox_refresh_properfil_{int(uid)}"
+                    _render_hidden_rerun_button(refresh_key)
+                    render_inbox_listener(token=str(token_chat), rol="profesional", user_id=int(uid), rerun_button_key=refresh_key)
                     st.markdown("<div class='axon-inbox'>", unsafe_allow_html=True)
                     if not convs:
                         st.info("Aún no tienes conversaciones.")

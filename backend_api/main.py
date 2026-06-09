@@ -668,6 +668,11 @@ async def join_conversation(sid, data):
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     await mark_read(cliente_id=cid, profesional_id=pid, rol=str(user["rol"]), at=now)
+    await sio.emit(
+        "seen_update",
+        {"cliente_id": cid, "profesional_id": pid, "reader_rol": str(user["rol"]), "seen_at": now},
+        room=room,
+    )
 
     lim = int(payload.limit or 50)
     if lim <= 0:
@@ -724,11 +729,36 @@ async def send_message(sid, data):
         "sender_id": int(user["user_id"]),
         "texto": texto,
         "created_at": now,
+        "seen": False,
     }
     room = f"c{cliente_id}_p{profesional_id}"
     await sio.emit("message", msg, room=room)
     await sio.emit("inbox_ping", msg, room=f"cliente_{int(cliente_id)}")
     await sio.emit("inbox_ping", msg, room=f"profesional_{int(profesional_id)}")
+
+
+@sio.event
+async def mark_seen(sid, data):
+    user = await sio.get_session(sid)
+    if not user:
+        return
+
+    payload = JoinConversationIn.model_validate(data or {})
+    cid = int(payload.cliente_id)
+    pid = int(payload.profesional_id)
+
+    if user["rol"] == "cliente" and user["user_id"] != cid:
+        return
+    if user["rol"] == "profesional" and user["user_id"] != pid:
+        return
+
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    await mark_read(cliente_id=cid, profesional_id=pid, rol=str(user["rol"]), at=now)
+    await sio.emit(
+        "seen_update",
+        {"cliente_id": cid, "profesional_id": pid, "reader_rol": str(user["rol"]), "seen_at": now},
+        room=f"c{cid}_p{pid}",
+    )
 
 
 app = socketio.ASGIApp(sio, other_asgi_app=api)
