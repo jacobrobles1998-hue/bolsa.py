@@ -1,11 +1,57 @@
-# Archivos de caché de Python
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Otros archivos basura
-.DS_Store
-.env
+# Entornos virtuales
 .venv/
+venv/
+env/
+
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Bases de datos locales
 *.db
+*.sqlite
+*.sqlite3
+
+# Caches y herramientas de Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
+
+# Cobertura y reportes
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Logs y temporales
+*.log
+*.tmp
+*.temp
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# Build / empaquetado
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
