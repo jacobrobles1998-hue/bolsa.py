@@ -1,0 +1,207 @@
+:root {
+  --bg-start: #2e1065;
+  --bg-end: #7c3aed;
+  --surface: rgba(255, 255, 255, 0.12);
+  --surface-border: rgba(255, 255, 255, 0.18);
+  --text: #f8f5ff;
+  --muted: #ddd6fe;
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--sans);
+  color: var(--text);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%);
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.app-card {
+  width: min(560px, 100%);
+  padding: 32px;
+  border: 1px solid var(--surface-border);
+  border-radius: 24px;
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 24px 60px rgba(24, 12, 58, 0.35);
+}
+
+.app-kicker {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.app-title {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.app-text {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.login-card {
+  display: grid;
+  gap: 20px;
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.login-field {
+  display: grid;
+  gap: 8px;
+}
+
+.login-field label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.login-field input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  outline: none;
+}
+
+.login-field input::placeholder {
+  color: var(--muted);
+}
+
+.login-button {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 14px;
+  background: #f5d0fe;
+  color: #4a044e;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.form-status {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+.form-status.is-error {
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+}
+
+.form-status.is-success {
+  background: rgba(20, 83, 45, 0.35);
+  color: #bbf7d0;
+}
+
+.register-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.register-link {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  color: var(--text);
+  text-align: center;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.register-link.secondary {
+  background: transparent;
+}
+
+.app-card--wide {
+  width: min(920px, 100%);
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid .login-field.full {
+  grid-column: 1 / -1;
+}
+
+.login-field select,
+.login-field textarea {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  outline: none;
+}
+
+.login-field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.form-actions .register-link,
+.form-actions .login-button {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
