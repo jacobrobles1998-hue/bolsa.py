@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 import api from '../../services/api.js'
+import { DEPARTAMENTOS_COLOMBIA, ESPECIALIDADES, ORIGEN_FORMACION, getUniversidadesDisponibles } from '../../utils/professionalCatalogs.js'
 
 const initialAccount = {
   nombre: '',
@@ -12,43 +14,19 @@ const initialAccount = {
 const initialProfile = {
   departamento: '',
   ciudad: '',
+  especialidad: '',
+  origenFormacion: 'En Colombia',
+  universidad: '',
   metodologia: '',
   tarifaUnidad: 'sesion',
   tarifa: '',
-  especialidad: '',
-  universidad: '',
   experiencia: '',
 }
-
-const DEPARTAMENTOS_COLOMBIA = {
-  'Atlántico': ['Barranquilla', 'Soledad', 'Puerto Colombia', 'Malambo', 'Sabanalarga', 'Baranoa', 'Galapa'],
-  'Antioquia': ['Medellín', 'Envigado', 'Bello', 'Itagüí', 'Rionegro', 'Sabaneta', 'Apartadó', 'Turbo', 'Caucasia'],
-  'Bogotá D.C.': ['Bogotá'],
-  'Valle del Cauca': ['Cali', 'Palmira', 'Tuluá', 'Buenaventura', 'Buga', 'Cartago', 'Jamundí', 'Yumbo'],
-  'Santander': ['Bucaramanga', 'Floridablanca', 'Girón', 'Piedecuesta', 'Barrancabermeja', 'San Gil'],
-  'Bolívar': ['Cartagena', 'Turbaco', 'Magangué', 'Arjona', 'Carmen de Bolívar'],
-  'Magdalena': ['Santa Marta', 'Ciénaga', 'Fundación', 'El Banco'],
-  'Cundinamarca': ['Soacha', 'Chía', 'Zipaquirá', 'Facatativá', 'Fusagasugá', 'Mosquera', 'Madrid', 'Funza', 'Girardot'],
-  'Norte de Santander': ['Cúcuta', 'Ocaña', 'Villa del Rosario', 'Los Patios', 'Pamplona'],
-  'Risaralda': ['Pereira', 'Dosquebradas', 'Santa Rosa de Cabal'],
-  'Caldas': ['Manizales', 'La Dorada', 'Riosucio', 'Chinchiná'],
-  'Quindío': ['Armenia', 'Calarcá', 'Tebaida', 'Montenegro'],
-  'Córdoba': ['Montería', 'Cereté', 'Lorica', 'Sahagún', 'Montelíbano'],
-  'Cesar': ['Valledupar', 'Aguachica', 'Agustín Codazzi', 'Bosconia'],
-}
-
-const ESPECIALIDADES = ['Nutricionista deportivo', 'Fisioterapeuta', 'Entrenador personal']
 
 const initialUploads = {
   foto: null,
   certFile: null,
   certTitle: '',
-}
-
-const toNumberOrNull = (value) => {
-  if (value === '') return null
-  const parsed = Number(value)
-  return Number.isNaN(parsed) ? null : parsed
 }
 
 const getStoredSession = () => {
@@ -57,6 +35,34 @@ const getStoredSession = () => {
   } catch {
     return null
   }
+}
+
+const clearStoredSession = () => {
+  try {
+    localStorage.removeItem('axon_session')
+  } catch {
+  }
+}
+
+const isProfessionalRegistrationComplete = (session) => {
+  const p = session?.profile || {}
+  return Boolean(
+    session?.token &&
+    p.departamento &&
+    p.ciudad &&
+    p.especialidad &&
+    p.universidad &&
+    p.metodologia &&
+    p.experiencia != null &&
+    p.tarifa != null
+  )
+}
+
+const getInitialStepFromSession = (session) => {
+  if (!session?.token) return 1
+  const profile = session.profile || {}
+  if (profile.departamento && profile.ciudad && profile.especialidad && profile.universidad) return 3
+  return 2
 }
 
 const fileToBase64 = (file) =>
@@ -71,13 +77,56 @@ const fileToBase64 = (file) =>
   })
 
 function RegisterProfessionalWizard() {
-  const [step, setStep] = useState(1)
-  const [account, setAccount] = useState(initialAccount)
+  const [session, setSession] = useState(getStoredSession())
+  const [step, setStep] = useState(() => getInitialStepFromSession(getStoredSession()))
   const [profile, setProfile] = useState(initialProfile)
   const [uploads, setUploads] = useState(initialUploads)
   const [loading, setLoading] = useState(false)
-  const [session, setSession] = useState(getStoredSession())
+  const [showPassword, setShowPassword] = useState(false)
   const [status, setStatus] = useState({ type: 'idle', message: '' })
+
+  const {
+    register: registerAccount,
+    handleSubmit: handleAccountFormSubmit,
+    watch: watchAccount,
+    reset: resetAccountForm,
+  } = useForm({
+    defaultValues: initialAccount,
+  })
+
+  const {
+    register: registerProfile,
+    handleSubmit: handleProfileFormSubmit,
+    watch: watchProfile,
+    reset: resetProfileForm,
+    setValue: setProfileValue,
+  } = useForm({
+    defaultValues: initialProfile,
+  })
+
+  const {
+    register: registerMedia,
+    handleSubmit: handleMediaFormSubmit,
+    reset: resetMediaForm,
+  } = useForm({
+    defaultValues: {
+      metodologia: initialProfile.metodologia,
+      certTitle: initialUploads.certTitle,
+    },
+  })
+
+  const {
+    register: registerPricing,
+    handleSubmit: handlePricingFormSubmit,
+    reset: resetPricingForm,
+  } = useForm({
+    defaultValues: {
+      experiencia: initialProfile.experiencia,
+      tarifaUnidad: initialProfile.tarifaUnidad,
+      tarifa: initialProfile.tarifa,
+    },
+  })
+
 
   const token = session?.token || ''
 
@@ -85,19 +134,79 @@ function RegisterProfessionalWizard() {
     ? { headers: { Authorization: `Bearer ${token}` } }
     : undefined
 
-  const ciudadesDisponibles = DEPARTAMENTOS_COLOMBIA[profile.departamento] || []
+  useEffect(() => {
+    const storedSession = getStoredSession()
+    if (!isProfessionalRegistrationComplete(storedSession)) return
 
-  const handleAccountChange = ({ target }) => {
-    const { name, value } = target
-    setAccount((current) => ({ ...current, [name]: value }))
-  }
+    clearStoredSession()
+    setSession(null)
+    setStep(1)
+    setProfile(initialProfile)
+    setUploads(initialUploads)
+    setShowPassword(false)
+    resetAccountForm(initialAccount)
+    resetProfileForm(initialProfile)
+    resetMediaForm({
+      metodologia: initialProfile.metodologia,
+      certTitle: initialUploads.certTitle,
+    })
+    resetPricingForm({
+      experiencia: initialProfile.experiencia,
+      tarifaUnidad: initialProfile.tarifaUnidad,
+      tarifa: initialProfile.tarifa,
+    })
+    setStatus({ type: 'idle', message: '' })
+  }, [resetAccountForm, resetMediaForm, resetPricingForm, resetProfileForm])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const syncSession = async () => {
+      if (!token || !authConfig) return
+      try {
+        const { data } = await api.get('/me', authConfig)
+        if (cancelled) return
+
+        const nextSession = { ...session, profile: data?.profile || session?.profile }
+        const nextProfile = { ...initialProfile, ...(nextSession.profile || {}) }
+        localStorage.setItem('axon_session', JSON.stringify(nextSession))
+        setSession(nextSession)
+        setProfile(nextProfile)
+        resetProfileForm(nextProfile)
+        setStep(getInitialStepFromSession(nextSession))
+      } catch (error) {
+        if (cancelled) return
+        const statusCode = error?.response?.status
+        if (statusCode === 401) {
+          clearStoredSession()
+          setSession(null)
+          setStatus({ type: 'idle', message: '' })
+          setStep(1)
+        }
+      }
+    }
+
+    syncSession()
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  const watchedDepartamento = watchProfile('departamento') || ''
+  const watchedEspecialidad = watchProfile('especialidad') || ''
+  const watchedOrigenFormacion = watchProfile('origenFormacion') || 'En Colombia'
+
+  const ciudadesDisponibles = DEPARTAMENTOS_COLOMBIA[watchedDepartamento] || []
+  const requiereOrigenFormacion = watchedEspecialidad === 'Entrenador Personal' || watchedEspecialidad === 'Nutricionista Deportivo'
+  const universidadesDisponibles = getUniversidadesDisponibles(watchedEspecialidad, watchedOrigenFormacion)
+
 
   const handleProfileChange = ({ target }) => {
     const { name, value } = target
     setProfile((current) => {
-      if (name === 'departamento') {
-        return { ...current, departamento: value, ciudad: '' }
-      }
+      if (name === 'departamento') return { ...current, departamento: value, ciudad: '' }
+      if (name === 'especialidad') return { ...current, especialidad: value, origenFormacion: 'En Colombia', universidad: '' }
+      if (name === 'origenFormacion') return { ...current, origenFormacion: value, universidad: '' }
       return { ...current, [name]: value }
     })
   }
@@ -111,16 +220,20 @@ function RegisterProfessionalWizard() {
     setUploads((current) => ({ ...current, [name]: value }))
   }
 
-  const handleAccountSubmit = async (event) => {
-    event.preventDefault()
-
-    if (!account.nombre.trim() || !account.email.trim() || !account.password.trim()) {
-      setStatus({ type: 'error', message: 'Nombre, correo y contraseña son obligatorios.' })
-      return
+  const handleBack = () => {
+    if (step > 1 && step < 5) {
+      setStatus({ type: 'idle', message: '' })
+      setStep((current) => Math.max(1, current - 1))
     }
+  }
 
-    if (account.password !== account.confirmPassword) {
-      setStatus({ type: 'error', message: 'La confirmación de contraseña no coincide.' })
+  const handleAccountSubmit = async (values) => {
+    const nombre = (values?.nombre || '').trim()
+    const email = (values?.email || '').trim().toLowerCase()
+    const password = values?.password || ''
+
+    if (!nombre || !email || !password) {
+      setStatus({ type: 'error', message: 'Nombre, correo y contraseña son obligatorios.' })
       return
     }
 
@@ -129,14 +242,16 @@ function RegisterProfessionalWizard() {
 
     try {
       const { data } = await api.post('/auth/register_profesional', {
-        nombre: account.nombre.trim(),
-        email: account.email.trim().toLowerCase(),
-        password: account.password,
+        nombre,
+        email,
+        password,
       })
 
       localStorage.setItem('axon_session', JSON.stringify(data))
       setSession(data)
       setStep(2)
+      setShowPassword(false)
+      resetAccountForm(initialAccount)
       setStatus({
         type: 'success',
         message: 'Felicitaciones, tu cuenta fue creada. Continuemos con tu registro profesional.',
@@ -158,18 +273,22 @@ function RegisterProfessionalWizard() {
     }
   }
 
-  const handleProfileSubmit = async (event) => {
-    event.preventDefault()
-
+  const handleProfileSubmit = async (values) => {
     if (!token) {
       setStatus({ type: 'error', message: 'No hay sesión activa para continuar el registro.' })
       return
     }
 
-    if (!profile.departamento.trim() || !profile.ciudad.trim() || !profile.metodologia.trim()) {
+    const departamento = (values?.departamento || '').trim()
+    const ciudad = (values?.ciudad || '').trim()
+    const especialidad = (values?.especialidad || '').trim()
+    const universidad = (values?.universidad || '').trim()
+    const origenFormacion = (values?.origenFormacion || 'En Colombia').trim()
+
+    if (!departamento || !ciudad || !especialidad || !universidad) {
       setStatus({
         type: 'error',
-        message: 'Departamento, ciudad y metodología son obligatorios.',
+        message: 'Departamento, ciudad, especialidad y formación académica son obligatorios.',
       })
       return
     }
@@ -178,22 +297,35 @@ function RegisterProfessionalWizard() {
     setStatus({ type: 'idle', message: '' })
 
     try {
-      await api.post(
+      const { data } = await api.post(
         '/me/profile',
         {
           cambios: {
-            departamento: profile.departamento.trim(),
-            ciudad: profile.ciudad.trim(),
-            metodologia: profile.metodologia.trim(),
-            tarifa_unidad: profile.tarifaUnidad || 'sesion',
-            tarifa: toNumberOrNull(profile.tarifa),
-            especialidad: profile.especialidad.trim() || null,
-            universidad: profile.universidad.trim() || null,
-            experiencia: toNumberOrNull(profile.experiencia),
+            departamento,
+            ciudad,
+            especialidad,
+            universidad,
           },
         },
         authConfig,
       )
+
+      const nextProfile = {
+        ...profile,
+        departamento,
+        ciudad,
+        especialidad,
+        origenFormacion,
+        universidad,
+      }
+      setProfile(nextProfile)
+      resetProfileForm(nextProfile)
+
+      if (data?.profile) {
+        const nextSession = { ...session, profile: data.profile }
+        localStorage.setItem('axon_session', JSON.stringify(nextSession))
+        setSession(nextSession)
+      }
 
       setStep(3)
       setStatus({
@@ -212,11 +344,17 @@ function RegisterProfessionalWizard() {
     }
   }
 
-  const handleUploadsSubmit = async (event) => {
-    event.preventDefault()
-
+  const handleMediaSubmit = async (values) => {
     if (!token) {
-      setStatus({ type: 'error', message: 'No hay sesión activa para finalizar el registro.' })
+      setStatus({ type: 'error', message: 'No hay sesión activa para continuar el registro.' })
+      return
+    }
+
+    const metodologia = (values?.metodologia || '').trim()
+    const certTitle = (values?.certTitle || '').trim()
+
+    if (!metodologia) {
+      setStatus({ type: 'error', message: 'La metodología de trabajo es obligatoria.' })
       return
     }
 
@@ -224,42 +362,105 @@ function RegisterProfessionalWizard() {
     setStatus({ type: 'idle', message: '' })
 
     try {
+      const { data } = await api.post('/me/profile', {
+        cambios: { metodologia },
+      }, authConfig)
+
+      const nextProfile = {
+        ...profile,
+        metodologia,
+      }
+      setProfile(nextProfile)
+      setUploads((current) => ({ ...current, certTitle }))
+      resetMediaForm({ metodologia, certTitle })
+
+      if (data?.profile) {
+        const nextSession = { ...session, profile: data.profile }
+        localStorage.setItem('axon_session', JSON.stringify(nextSession))
+        setSession(nextSession)
+      }
+
       if (uploads.foto) {
         const fotoB64 = await fileToBase64(uploads.foto)
-        await api.post(
-          '/me/foto',
-          {
-            foto_b64: fotoB64,
-            foto_mime: uploads.foto.type || null,
-          },
-          authConfig,
-        )
+        await api.post('/me/foto', {
+          foto_b64: fotoB64,
+          foto_mime: uploads.foto.type || null,
+        }, authConfig)
       }
 
       if (uploads.certFile) {
         const certB64 = await fileToBase64(uploads.certFile)
-        await api.post(
-          '/me/certificaciones',
-          {
-            titulo: uploads.certTitle.trim() || uploads.certFile.name,
-            archivo_b64: certB64,
-            archivo_mime: uploads.certFile.type || null,
-          },
-          authConfig,
-        )
+        await api.post('/me/certificaciones', {
+          titulo: certTitle || uploads.certFile.name,
+          archivo_b64: certB64,
+          archivo_mime: uploads.certFile.type || null,
+        }, authConfig)
       }
 
       setStep(4)
-      setStatus({
-        type: 'success',
-        message: 'Registro profesional completado correctamente.',
-      })
+      setStatus({ type: 'success', message: 'Perfecto. Ahora completa tu experiencia, modalidad y precio.' })
     } catch (error) {
       setStatus({
         type: 'error',
-        message:
-          error.response?.data?.detail ||
-          'No se pudo finalizar la carga de archivos.',
+        message: error.response?.data?.detail || 'No se pudo guardar la metodología o los archivos.',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePricingSubmit = async (values) => {
+    if (!token) {
+      setStatus({ type: 'error', message: 'No hay sesión activa para finalizar el registro.' })
+      return
+    }
+
+    const experiencia = values?.experiencia
+    const tarifaUnidad = values?.tarifaUnidad || 'sesion'
+    const tarifa = `${values?.tarifa ?? ''}`.trim()
+
+    if ((experiencia === '' || experiencia == null) && experiencia !== 0) {
+      setStatus({ type: 'error', message: 'Los años de experiencia son obligatorios.' })
+      return
+    }
+    if (!tarifa) {
+      setStatus({ type: 'error', message: 'El precio de trabajo es obligatorio.' })
+      return
+    }
+
+    setLoading(true)
+    setStatus({ type: 'idle', message: '' })
+
+    try {
+      const { data } = await api.post('/me/profile', {
+        cambios: {
+          experiencia: Number(experiencia),
+          tarifa_unidad: tarifaUnidad,
+          tarifa: Number(tarifa),
+        },
+      }, authConfig)
+
+      const nextProfile = {
+        ...profile,
+        experiencia: `${experiencia ?? ''}`,
+        tarifaUnidad,
+        tarifa,
+      }
+      setProfile(nextProfile)
+      resetPricingForm(nextProfile)
+
+      if (data?.profile) {
+        const nextSession = { ...session, profile: data.profile }
+        localStorage.setItem('axon_session', JSON.stringify(nextSession))
+        setSession(nextSession)
+      }
+
+      setStep(5)
+      setStatus({ type: 'success', message: 'Registro profesional completado correctamente.' })
+    } catch (error) {
+      setStatus({
+        type: 'error',
+        message: error.response?.data?.detail || 'No se pudo guardar la experiencia y tarifa.',
       })
     } finally {
       setLoading(false)
@@ -269,28 +470,31 @@ function RegisterProfessionalWizard() {
   return (
     <main className="app-shell">
       <section className="app-card app-card--wide login-card">
-        <Link to="/login" className="back-link">← Volver</Link>
+        {step === 1 || step === 5 ? (
+          <Link to="/login" className="back-link">← Volver</Link>
+        ) : (
+          <button type="button" className="back-link back-button" onClick={handleBack}>← Volver</button>
+        )}
         <p className="app-kicker">Axon Registro</p>
         <h1 className="app-title">Registro profesional</h1>
         <p className="app-text">
-          {step === 1 && 'Paso 1 de 3: crea tu cuenta con los datos básicos.'}
-          {step === 2 && 'Paso 2 de 3: completa tu perfil profesional.'}
-          {step === 3 && 'Paso 3 de 3: sube tu foto y tus certificaciones.'}
-          {step === 4 && 'Tu perfil quedó listo para continuar dentro de la app.'}
+          {step === 1 && 'Paso 1 de 4: crea tu cuenta con los datos básicos.'}
+          {step === 2 && 'Paso 2 de 4: completa tu perfil profesional.'}
+          {step === 3 && 'Paso 3 de 4: agrega tu metodología, foto y certificaciones.'}
+          {step === 4 && 'Paso 4 de 4: agrega tu experiencia, modalidad y precio de trabajo.'}
+          {step === 5 && 'Tu perfil quedó listo para continuar dentro de la app.'}
         </p>
 
         {step === 1 && (
-          <form className="login-form" onSubmit={handleAccountSubmit}>
+          <form className="login-form" onSubmit={handleAccountFormSubmit(handleAccountSubmit)}>
             <div className="form-grid">
               <div className="login-field full">
                 <label htmlFor="nombre">Nombre completo</label>
                 <input
                   id="nombre"
-                  name="nombre"
                   type="text"
-                  value={account.nombre}
-                  onChange={handleAccountChange}
                   placeholder="Tu nombre completo"
+                  {...registerAccount('nombre', { required: true })}
                 />
               </div>
 
@@ -298,36 +502,57 @@ function RegisterProfessionalWizard() {
                 <label htmlFor="email">Correo electrónico</label>
                 <input
                   id="email"
-                  name="email"
                   type="email"
-                  value={account.email}
-                  onChange={handleAccountChange}
                   placeholder="correo@ejemplo.com"
+                  {...registerAccount('email', { required: true })}
                 />
               </div>
 
               <div className="login-field">
                 <label htmlFor="password">Contraseña</label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={account.password}
-                  onChange={handleAccountChange}
-                  placeholder="Tu contraseña"
-                />
+                <div className="password-input-wrap">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Tu contraseña"
+                    autoComplete="new-password"
+                    {...registerAccount('password', { required: true })}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
               </div>
 
               <div className="login-field full">
                 <label htmlFor="confirmPassword">Verificar contraseña</label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  value={account.confirmPassword}
-                  onChange={handleAccountChange}
-                  placeholder="Repite tu contraseña"
-                />
+                <div className="password-input-wrap">
+                  <input
+                    id="confirmPassword"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Repite tu contraseña"
+                    autoComplete="new-password"
+                    {...registerAccount('confirmPassword', {
+                      required: true,
+                      validate: (value) => value === (watchAccount('password') || ''),
+                    })}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -350,15 +575,17 @@ function RegisterProfessionalWizard() {
         )}
 
         {step === 2 && (
-          <form className="login-form" onSubmit={handleProfileSubmit}>
+          <form className="login-form" onSubmit={handleProfileFormSubmit(handleProfileSubmit)}>
             <div className="form-grid">
               <div className="login-field">
                 <label htmlFor="departamento">Departamento</label>
                 <select
                   id="departamento"
-                  name="departamento"
-                  value={profile.departamento}
-                  onChange={handleProfileChange}
+                  {...registerProfile('departamento', {
+                    onChange: () => {
+                      setProfileValue('ciudad', '')
+                    },
+                  })}
                 >
                   <option value="">Selecciona un departamento</option>
                   {Object.keys(DEPARTAMENTOS_COLOMBIA).map((depto) => (
@@ -371,64 +598,27 @@ function RegisterProfessionalWizard() {
                 <label htmlFor="ciudad">Ciudad o municipio</label>
                 <select
                   id="ciudad"
-                  name="ciudad"
-                  value={profile.ciudad}
-                  onChange={handleProfileChange}
-                  disabled={!profile.departamento}
+                  {...registerProfile('ciudad')}
+                  disabled={!watchedDepartamento}
                 >
-                  <option value="">{profile.departamento ? 'Selecciona una ciudad' : 'Primero selecciona un departamento'}</option>
+                  <option value="">{watchedDepartamento ? 'Selecciona una ciudad' : 'Primero selecciona un departamento'}</option>
                   {ciudadesDisponibles.map((ciudad) => (
                     <option key={ciudad} value={ciudad}>{ciudad}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="login-field full">
-                <label htmlFor="metodologia">Metodología de trabajo</label>
-                <textarea
-                  id="metodologia"
-                  name="metodologia"
-                  value={profile.metodologia}
-                  onChange={handleProfileChange}
-                  placeholder="Describe tu forma de trabajar"
-                />
-              </div>
-
-              <div className="login-field">
-                <label htmlFor="tarifaUnidad">Trabajo por</label>
-                <select
-                  id="tarifaUnidad"
-                  name="tarifaUnidad"
-                  value={profile.tarifaUnidad}
-                  onChange={handleProfileChange}
-                >
-                  <option value="sesion">Sesión</option>
-                  <option value="semana">Semana</option>
-                  <option value="mes">Mes</option>
-                </select>
-              </div>
-
-              <div className="login-field">
-                <label htmlFor="tarifa">Precio de trabajo</label>
-                <input
-                  id="tarifa"
-                  name="tarifa"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={profile.tarifa}
-                  onChange={handleProfileChange}
-                  placeholder="Ej: 120000"
-                />
-              </div>
-
               <div className="login-field">
                 <label htmlFor="especialidad">Especialidad</label>
                 <select
                   id="especialidad"
-                  name="especialidad"
-                  value={profile.especialidad}
-                  onChange={handleProfileChange}
+                  placeholder="Selecciona una especialidad"
+                  {...registerProfile('especialidad', {
+                    onChange: () => {
+                      setProfileValue('origenFormacion', 'En Colombia')
+                      setProfileValue('universidad', '')
+                    },
+                  })}
                 >
                   <option value="">Selecciona una especialidad</option>
                   {ESPECIALIDADES.map((especialidad) => (
@@ -437,29 +627,30 @@ function RegisterProfessionalWizard() {
                 </select>
               </div>
 
-              <div className="login-field">
-                <label htmlFor="universidad">Universidad</label>
-                <input
-                  id="universidad"
-                  name="universidad"
-                  type="text"
-                  value={profile.universidad}
-                  onChange={handleProfileChange}
-                  placeholder="Tu universidad o institución"
-                />
-              </div>
+              {requiereOrigenFormacion ? (
+                <div className="login-field">
+                  <label htmlFor="origenFormacion">Dónde fue su formación académica</label>
+                  <select
+                    id="origenFormacion"
+                    {...registerProfile('origenFormacion', {
+                      onChange: () => {
+                        setProfileValue('universidad', '')
+                      },
+                    })}
+                  >
+                    {ORIGEN_FORMACION.map((origen) => <option key={origen} value={origen}>{origen}</option>)}
+                  </select>
+                </div>
+              ) : null}
 
-              <div className="login-field full">
-                <label htmlFor="experiencia">Años de experiencia</label>
-                <input
-                  id="experiencia"
-                  name="experiencia"
-                  type="number"
-                  min="0"
-                  value={profile.experiencia}
-                  onChange={handleProfileChange}
-                  placeholder="Ej: 5"
-                />
+              <div className={requiereOrigenFormacion ? 'login-field full' : 'login-field'}>
+                <label htmlFor="universidad">Formación académica</label>
+                <select id="universidad" placeholder="Selecciona una institución" {...registerProfile('universidad')} disabled={!watchedEspecialidad}>
+                  <option value="">{watchedEspecialidad ? 'Selecciona una institución' : 'Primero selecciona una especialidad'}</option>
+                  {universidadesDisponibles.map((universidad) => (
+                    <option key={universidad} value={universidad}>{universidad}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -478,8 +669,17 @@ function RegisterProfessionalWizard() {
         )}
 
         {step === 3 && (
-          <form className="login-form" onSubmit={handleUploadsSubmit}>
+          <form className="login-form" onSubmit={handleMediaFormSubmit(handleMediaSubmit)}>
             <div className="form-grid">
+              <div className="login-field full">
+                <label htmlFor="metodologia">Metodología de trabajo</label>
+                <textarea
+                  id="metodologia"
+                  placeholder="Describe tu metodología de trabajo"
+                  {...registerMedia('metodologia')}
+                />
+              </div>
+
               <div className="login-field full">
                 <label htmlFor="foto">Subir foto de perfil</label>
                 <input
@@ -487,6 +687,7 @@ function RegisterProfessionalWizard() {
                   name="foto"
                   type="file"
                   accept="image/*"
+                  placeholder="Subir foto"
                   onChange={handleUploadChange}
                 />
               </div>
@@ -495,11 +696,9 @@ function RegisterProfessionalWizard() {
                 <label htmlFor="certTitle">Título del certificado</label>
                 <input
                   id="certTitle"
-                  name="certTitle"
                   type="text"
-                  value={uploads.certTitle}
-                  onChange={handleUploadChange}
                   placeholder="Diploma, certificación, curso..."
+                  {...registerMedia('certTitle')}
                 />
               </div>
 
@@ -523,13 +722,50 @@ function RegisterProfessionalWizard() {
 
             <div className="form-actions">
               <button type="submit" className="login-button" disabled={loading}>
-                {loading ? 'Finalizando...' : 'Finalizar registro'}
+                {loading ? 'Guardando...' : 'Siguiente'}
               </button>
             </div>
           </form>
         )}
 
         {step === 4 && (
+          <form className="login-form" onSubmit={handlePricingFormSubmit(handlePricingSubmit)}>
+            <div className="form-grid">
+              <div className="login-field">
+                <label htmlFor="experiencia">Años de experiencia</label>
+                <input id="experiencia" type="number" min="0" placeholder="Ej: 5" {...registerPricing('experiencia')} />
+              </div>
+
+              <div className="login-field">
+                <label htmlFor="tarifaUnidad">Trabajo por</label>
+                <select id="tarifaUnidad" {...registerPricing('tarifaUnidad')}>
+                  <option value="sesion">Sesión</option>
+                  <option value="semana">Semana</option>
+                  <option value="mes">Mes</option>
+                </select>
+              </div>
+
+              <div className="login-field full">
+                <label htmlFor="tarifa">Precio de trabajo</label>
+                <input id="tarifa" type="number" min="0" step="0.01" placeholder="Ej: 120000" {...registerPricing('tarifa')} />
+              </div>
+            </div>
+
+            {status.message ? (
+              <p className={`form-status ${status.type === 'error' ? 'is-error' : 'is-success'}`}>
+                {status.message}
+              </p>
+            ) : null}
+
+            <div className="form-actions">
+              <button type="submit" className="login-button" disabled={loading}>
+                {loading ? 'Finalizando...' : 'Finalizar registro'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 5 && (
           <>
             <p className="form-status is-success">
               Tu perfil profesional quedó creado y completado.

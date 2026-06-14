@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "checkJs": false
+  },
+  "include": ["src/**/*", "src/index.html", "src/index.css", "src/index.js", "src/index.jsx", "src/index.tsx", "src/index.ts"]
+}

@@ -1,0 +1,48 @@
+backend
+1. cd "C:\Users\Jav
+id Martinez\Documents\bolsa_project"
+2. uvicorn backend_api.main:app --host 127.0.0.1 --port 8001 --reload
+
+frontend
+1. cd "C:\Users\Javid Martinez\Documents\bolsa_project\frontend"
+2. npm run dev -- --host 127.0.0.1 --port 5173
+
+URLs
+prueba rapida sin (frontend) - POST /aunth/login
+- Backend docs: http://127.0.0.1:8001/docs
+- Frontend: http://127.0.0.1:5173/
+
+Si cambias de PC y no tienes .venv Antes del backend:
+1. cd "C:\Users\Javid Martinez\Documents\bolsa_project"
+2. py -3.11 -m venv .venv
+3. .\.venv\Scripts\Activate.ps1
+4. pip install -r requirements.txt
+
+borrar la base de datos(borrar todo)
+1. cd "C:\Users\Javid Martinez\Documents\bolsa_project"
+2. Remove-Item ".\basededatos\bolsa_data.db" -Force
+
+verificar que se recreo la bolsa_data
+cd "C:\Users\Javid Martinez\Documents\bolsa_project"
+dir .\basededatos
+
+el boton f12 que me lleva a la consolo del navegador no deja copiar ningun tipo de comando al menos
+que tu copies  este comando
+1. allow pasting
+
+## Limpia la sesión del navegador (muy importante)
+En el navegador donde está tu frontend ( http://127.0.0.1:5173 ), abre F12 → Console y pega:
+localStorage.removeItem('axon_session')
+location.reload()
+
+la conexion de mi backend con mi frontend esta bien esto lo que me esta pasando es porque esoty borrando los datos de mi base de datos y puede que este utilizando correosç
+que ya tengo sin darme cuenta, lo importante es que la conoxion entre mi backend y mi frontend esta bien
+
+usuario  profesioanl
+pruebaaxonpro01@gmail.com
+12348891**
+
+usuario cliente
+pruebaaxoncliente01@gmail.com
+12348891**
+
