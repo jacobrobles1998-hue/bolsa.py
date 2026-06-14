@@ -158,6 +158,21 @@ body {
   background: transparent;
 }
 
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.back-link:hover {
+  opacity: 1;
+}
+
 .app-card--wide {
   width: min(920px, 100%);
 }
@@ -181,6 +196,20 @@ body {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
   outline: none;
+}
+
+.login-field select {
+  background-color: rgba(124, 58, 237, 0.35);
+  color: #f8f5ff;
+}
+
+.login-field select option {
+  background-color: #6d28d9;
+  color: #f8f5ff;
+}
+
+.login-field select:disabled {
+  opacity: 0.72;
 }
 
 .login-field textarea {

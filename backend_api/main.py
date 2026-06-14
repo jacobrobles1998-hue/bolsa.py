@@ -228,7 +228,10 @@ async def auth_register_profesional(body: AuthRegisterProfesionalIn):
 
     try:
         profesional_id = int(crear_profesional(data))
-    except Exception:
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "unique" in msg and "email" in msg:
+            raise HTTPException(status_code=400, detail="Ese correo ya ya está registrado como profesional")
         raise HTTPException(status_code=400, detail="No se pudo crear el profesional")
 
     token = crear_sesion("profesional", profesional_id)
@@ -255,7 +258,10 @@ async def auth_register_cliente(body: AuthRegisterClienteIn):
 
     try:
         cliente_id = int(crear_cliente(data))
-    except Exception:
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "unique" in msg and "email" in msg:
+            raise HTTPException(status_code=400, detail="Ese correo ya está registrado como cliente")
         raise HTTPException(status_code=400, detail="No se pudo crear el cliente")
 
     token = crear_sesion("cliente", cliente_id)

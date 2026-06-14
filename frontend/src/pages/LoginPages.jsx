@@ -35,11 +35,16 @@ function LoginPages() {
         message: `Bienvenido${data?.profile?.nombre ? `, ${data.profile.nombre}` : ''}. Ya quedó conectado con el backend.`,
       })
     } catch (error) {
+      const backendDetail = error.response?.data?.detail
+      const message = backendDetail || (error.code === 'ECONNABORTED'
+        ? 'El backend tardó demasiado en responder.'
+        : error.request
+          ? 'No se pudo conectar con el backend en 8001. Verifica que esté corriendo.'
+          : error.message || 'No se pudo iniciar sesión.')
+
       setStatus({
         type: 'error',
-        message:
-          error.response?.data?.detail ||
-          'No se pudo iniciar sesión. Verifica que el backend esté corriendo en el puerto 8000.',
+        message,
       })
     } finally {
       setLoading(false)
