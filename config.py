@@ -36,8 +36,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY') or 'clave-secreta-para-axon-2026'
     
     # Base de Datos
     # Por ahora usamos SQLite por ser sencilla para empezar
-DB_PATH = 'basededatos/bolsa_data.db'
-    
+from pathlib import Path
+# obtiene la ruta del directorio done vive el archivo config.pyde forma absoluta
+ROOT_DIR = Path(__file__).resolve().parent
+# crea la ruta de la base de datos sin importa desde donde la ejecute el proyecto
+DB_PATH = str(ROOT_DIR / "basededatos" / "bolsa_data.db")
+
     # Configuración de Negocio
 COMISION_APP = 0.10  # 10% de comisión por cada contrato
 MONEDA = "COP"       # Pesos Colombianos

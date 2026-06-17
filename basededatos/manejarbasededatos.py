@@ -570,24 +570,7 @@ def crear_tablas_iniciales():
         pass
 
 def anonimizar_correos_existentes():
-    conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE profesionales
-        SET email = 'prof_' || id || '@axon.local'
-        WHERE email IS NOT NULL AND email NOT LIKE 'prof_%@axon.local'
-        """
-    )
-    cursor.execute(
-        """
-        UPDATE clientes
-        SET email = 'cli_' || id || '@axon.local'
-        WHERE email IS NOT NULL AND email NOT LIKE 'cli_%@axon.local'
-        """
-    )
-    conn.commit()
-    conn.close()
+   pass
 
 def crear_profesional(datos: dict) -> int:
     conn = conectar_db()
