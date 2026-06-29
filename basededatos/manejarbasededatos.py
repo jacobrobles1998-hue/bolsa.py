@@ -564,13 +564,7 @@ def crear_tablas_iniciales():
     conn.commit()
     conn.close()
 
-    try:
-        anonimizar_correos_existentes()
-    except Exception:
-        pass
-
-def anonimizar_correos_existentes():
-   pass
+    
 
 def crear_profesional(datos: dict) -> int:
     conn = conectar_db()

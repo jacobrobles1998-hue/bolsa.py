@@ -35,7 +35,8 @@ const getStoredSession = () => {
 const clearStoredSession = () => {
   try {
     localStorage.removeItem('axon_session')
-  } catch {
+  } catch (error){
+   console.error("error al limpiar sesion", error);
   }
 }
 
@@ -127,39 +128,44 @@ function RegisterClientForm() {
     const storedSession = getStoredSession()
     if (!isClientRegistrationComplete(storedSession)) return
 
-    clearStoredSession()
-    setSession(null)
-    setStep(1)
-    setClient(initialClient)
-    setFoto(null)
-    resetAccountForm(initialAccount)
-    resetStep2Form({
-      genero: initialClient.genero,
-      edad: initialClient.edad,
-      altura: initialClient.altura,
-      peso: initialClient.peso,
-    })
-    resetStep3Form({
-      departamento: initialClient.departamento,
-      ciudad: initialClient.ciudad,
-      tienePatologia: initialClient.tienePatologia,
-      patologia: initialClient.patologia,
-    })
-    setStatus({ type: 'idle', message: '' })
-  }, [resetAccountForm, resetStep2Form, resetStep3Form])
+    // clearStoredSession()
+    // setSession(null)
+    setStep(5)
+    // setClient(initialClient)
+    // setFoto(null)
+    // resetAccountForm(initialAccount)
+  //   resetStep2Form({
+  //     genero: initialClient.genero,
+  //     edad: initialClient.edad,
+  //     altura: initialClient.altura,
+  //     peso: initialClient.peso,
+  //   })
+  //   resetStep3Form({
+  //     departamento: initialClient.departamento,
+  //     ciudad: initialClient.ciudad,
+  //     tienePatologia: initialClient.tienePatologia,
+  //     patologia: initialClient.patologia,
+  //   })
+    // setStatus({ type: 'idle', message: '' })
+  }, [])
 
   useEffect(() => {
     let cancelled = false
 
     const syncSession = async () => {
-      if (!token || !authConfig) return
+      if (!token) return
+      const storedSession = getStoredSession()
+      if (isClientRegistrationComplete(storedSession)) return 
+      const config = { headers: { Authorization: `Bearer ${token}` } }
       try {
-        const { data } = await api.get('/me', authConfig)
+        const { data } = await api.get('/me', config)
         if (cancelled) return
-        const nextSession = { ...session, profile: data?.profile || session?.profile }
-        localStorage.setItem('axon_session', JSON.stringify(nextSession))
-        setSession(nextSession)
-        setStep(getInitialStepFromSession(nextSession))
+        setSession((prev) => {
+          const nextSession = { ...prev, profile: data?.profile || prev?.profile }
+          localStorage.setItem('axon_session', JSON.stringify(nextSession))
+          setStep(getInitialStepFromSession(nextSession))
+          return nextSession
+        })
       } catch (error) {
         if (cancelled) return
         if (error?.response?.status === 401) {
@@ -184,14 +190,7 @@ function RegisterClientForm() {
     }
   }
 
-  const handleClientChange = ({ target }) => {
-    const { name, value } = target
-    setClient((current) => {
-      if (name === 'departamento') return { ...current, departamento: value, ciudad: '' }
-      if (name === 'tienePatologia') return { ...current, tienePatologia: value, patologia: value === 'Si' ? current.patologia : '' }
-      return { ...current, [name]: value }
-    })
-  }
+  
 
   const handleStep1Submit = async (values) => {
     const nombre = (values?.nombre || '').trim()
@@ -446,16 +445,13 @@ function RegisterClientForm() {
               <div className="login-field">
                 <label htmlFor="edad">Edad</label>
                 <input id="edad" 
-                placeholder="27"
-                {...registerStep2('edad')} 
+                placeholder="27"            
                 type="number" min="0" {...registerStep2('edad')} />
               </div>
 
               <div className="login-field">
                 <label htmlFor="altura">Altura</label>
                 <input id="altura" 
-                placeholder="Altura"
-                {...registerStep2('altura')} 
                 type="number" step="0.01" min="0" placeholder="Ej: 1.72" {...registerStep2('altura')} />
               </div>
 

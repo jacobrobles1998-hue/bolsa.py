@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link,  useNavigate } from 'react-router-dom'
 import api from '../services/api.js'
 
+
 function LoginPages() {
+  const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState({ type: 'idle', message: '' })
@@ -30,10 +32,15 @@ function LoginPages() {
       })
 
       localStorage.setItem('axon_session', JSON.stringify(data))
-      setStatus({
-        type: 'success',
-        message: `Bienvenido${data?.profile?.nombre ? `, ${data.profile.nombre}` : ''}. Ya quedó conectado con el backend.`,
-      })
+console.log('ROL:', data?.rol)
+console.log('DATA:', data)
+const rol = data?.rol || ''
+if (rol === 'profesional') {
+  navigate('/profesional/inicio')
+} else {
+  navigate('/cliente/inicio')
+}
+    
     } catch (error) {
       const backendDetail = error.response?.data?.detail
       const message = backendDetail || (error.code === 'ECONNABORTED'

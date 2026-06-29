@@ -40,9 +40,11 @@ const getStoredSession = () => {
 const clearStoredSession = () => {
   try {
     localStorage.removeItem('axon_session')
-  } catch {
+  } catch (error){
+    console.error("error al limpiar sesion", error);
+   }
   }
-}
+
 
 const isProfessionalRegistrationComplete = (session) => {
   const p = session?.profile || {}
@@ -190,6 +192,7 @@ function RegisterProfessionalWizard() {
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   const watchedDepartamento = watchProfile('departamento') || ''
@@ -201,15 +204,6 @@ function RegisterProfessionalWizard() {
   const universidadesDisponibles = getUniversidadesDisponibles(watchedEspecialidad, watchedOrigenFormacion)
 
 
-  const handleProfileChange = ({ target }) => {
-    const { name, value } = target
-    setProfile((current) => {
-      if (name === 'departamento') return { ...current, departamento: value, ciudad: '' }
-      if (name === 'especialidad') return { ...current, especialidad: value, origenFormacion: 'En Colombia', universidad: '' }
-      if (name === 'origenFormacion') return { ...current, origenFormacion: value, universidad: '' }
-      return { ...current, [name]: value }
-    })
-  }
 
   const handleUploadChange = ({ target }) => {
     const { name, value, files } = target
