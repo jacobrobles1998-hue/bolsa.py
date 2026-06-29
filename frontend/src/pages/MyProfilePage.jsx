@@ -11,7 +11,7 @@ function ClientePerfilPage() {
     return (
         <div className="perfil-page">
             <h1 className="app-tittle">mi perfil</h1>
-            <button calssName="logout-btn" onClick={handleLogout}>
+            <button className="logout-btn" onClick={handleLogout}>
                 cerrar sesión
             </button>
         </div>
