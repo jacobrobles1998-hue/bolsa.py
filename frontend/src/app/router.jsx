@@ -5,7 +5,7 @@ import RegisterProfessionalPage from '../pages/RegisterProfessionalPage.jsx'
 import Appshell from '../components/layout/appshell.jsx'
 import ClientHomePage from '../pages/ClientHomePage.jsx'
 import InboxPage from '../pages/InboxPage.jsx'
-import ClientePerfilPage from '../pages/ClientePerfilPage.jsx'
+import MyProfilePage from '../pages/MyProfilePage.jsx'
 
 
 function AppRouter() {
@@ -22,7 +22,7 @@ function AppRouter() {
           <Route path="inicio" element={<ClientHomePage />} />
           <Route path="chat" element={<InboxPage />} />
           <Route path="contratos" element={<div> contratos proximamanete</div>} />
-          <Route path="perfil" element={<ClientePerfilPage />} />
+          <Route path="perfil" element={<MyProfilePage />} />
 
         </Route>       
         <Route path="*" element={<Navigate to="/login" replace />} />
